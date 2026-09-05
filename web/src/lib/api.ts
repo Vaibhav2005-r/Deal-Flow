@@ -103,6 +103,9 @@ export interface Score {
   score: number;
   approval_chain: string[];
   hard_stop: boolean;
+  /** approval required by value conceded alone — the score would have passed */
+  concession_review: boolean;
+  concession: number;
   components: Record<string, number>;
   aggregates: Record<string, number>;
   explanation: string[];

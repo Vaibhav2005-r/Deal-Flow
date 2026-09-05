@@ -48,7 +48,7 @@ def test_logged_row_carries_the_full_replay_payload():
     )
     row = s.added[0]
     assert row.agent == "governance"
-    assert row.engine_version == "governance/1.0.0"
+    assert row.engine_version == "governance/1.1.0"
     assert row.quotation_id == 42
     assert row.actor_id == 7
     assert row.input_hash == decision.input_hash

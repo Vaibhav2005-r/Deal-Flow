@@ -129,6 +129,11 @@ class LineSnapshot(_Snap):
         return self.list_value * (Decimal(1) - self.discount_pct / Decimal(100))
 
     @property
+    def concession_value(self) -> Decimal:
+        """Money given away on this line: list_value - net_value."""
+        return self.list_value - self.net_value
+
+    @property
     def margin_shortfall_pct(self) -> Decimal:
         """shortfall_i = max(0, floor_margin_pct_i - margin_pct_i)"""
         return max(Decimal(0), self.floor_margin_pct - self.margin_pct)
@@ -143,6 +148,19 @@ class GovernanceSnapshot(_Snap):
     subscription_term_months: int = 0
     rep_discount_robust_z: float = 0.0
     large_order_threshold: Decimal = Decimal("500000")
+    #: Absolute value conceded above which a human must look, regardless of
+    #: score. See app.domain.governance.total_concession for why percentages
+    #: alone cannot see this.
+    #:
+    #: Calibrated against the seeded corpus rather than picked round: across
+    #: 207 orders the median concession is ~64k and p90 is ~189k, so 250k flags
+    #: the top ~3% by value given away. 150k would have flagged 15% — a review
+    #: queue that size is noise, and this project treats false positives as the
+    #: expensive failure. Both defaults sit above every §10 golden case, so the
+    #: published expected chains are unaffected; both are config-driven,
+    #: because a currency amount is a business policy, not an engine constant.
+    concession_review_threshold: Decimal = Decimal("250000")
+    concession_finance_threshold: Decimal = Decimal("1000000")
     lines: list[LineSnapshot]
 
 

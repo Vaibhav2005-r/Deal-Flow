@@ -176,6 +176,35 @@ elif score < ROUTE_FINANCE_MIN:  → ["SALES_MANAGER"]
 else:                            → ["SALES_MANAGER", "FINANCE"]
 ```
 
+**CONCESSION GATE (added after §10 was written).** Every term above is a
+percentage, so none of them can see how much money an order actually gives
+away. An order sitting exactly at ceiling on every line breaches nothing and
+scores ~0 no matter how large it is — and the effect is inverted, not merely
+absent: ten lines at a 10% ceiling concede 100,000 and score 3.0, while one
+line 1pp over concedes 11,000 and scores 7.6. The order giving away nine times
+more is the one nobody reviews.
+
+So routing also considers `concession = Σ(list_value_i − net_i)`:
+
+```
+if concession > config.concession_finance_threshold:  → ["SALES_MANAGER", "FINANCE"]
+elif concession > config.concession_review_threshold and chain == []:
+                                                      → ["SALES_MANAGER"]
+```
+
+Concession may only **add** oversight, never remove it. It adjusts routing
+only and does **not** enter the score, so every expected value in §10 is
+unchanged — this measures a different axis from policy breach, exactly as the
+single-line hard stop already does. It is not §13's banned "single order-level
+discount threshold" replacing per-line ceilings: the ceilings still do all the
+scoring, and this catches what percentages structurally cannot.
+
+Thresholds are config-driven, because a currency amount is a business policy
+rather than an engine constant. The defaults (250,000 / 1,000,000) are
+calibrated against the seeded corpus — median concession ~64k, p90 ~189k — so
+the review gate fires on roughly the top 3% by value conceded rather than
+becoming a tax on ordinary business.
+
 `explanation` must name each breaching line and its contribution, e.g.
 `"Setup Service: 18% given vs 10% ceiling → 8.0pp over (contributes 32.0 of 40)"`.
 

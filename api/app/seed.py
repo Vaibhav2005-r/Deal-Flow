@@ -165,6 +165,10 @@ for _tier, _cats in _CEILINGS.items():
 
 CONFIG_DEFAULTS = {
     "large_order_threshold": "500000",
+    # Value conceded above which a human must look regardless of score.
+    # ~97th percentile of the seeded corpus; see GovernanceSnapshot.
+    "concession_review_threshold": "250000",
+    "concession_finance_threshold": "1000000",
     "min_suggestion_margin_pct": "15",
     "stall_days": "7",
 }

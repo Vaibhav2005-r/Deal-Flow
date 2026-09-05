@@ -10,7 +10,7 @@ from decimal import Decimal as D
 import pytest
 
 from app.domain import governance
-from app.domain.governance import decide
+from app.domain.governance import ROUTE_MANAGER_MIN, decide
 from app.domain.verifiers import verify_governance
 from app.domain.types import VerifierVerdict
 from tests.golden.conftest import line, snapshot
@@ -303,6 +303,152 @@ def test_verifier_catches_a_tampered_score():
 
 
 def test_engine_version_is_pinned():
-    """Replay (§10.5) depends on this string; bump it on ANY rule change."""
-    assert governance.ENGINE_VERSION == "governance/1.0.0"
-    assert decide(case_a()).engine_version == "governance/1.0.0"
+    """Replay (§10.5) depends on this string; bump it on ANY rule change.
+
+    1.1.0 added concession-based routing. The SCORE formula did not change —
+    every expected value above is still the 1.0.0 value — but routing did, and
+    §4 says bump on ANY rule change, not only scoring ones.
+    """
+    assert governance.ENGINE_VERSION == "governance/1.1.0"
+    assert decide(case_a()).engine_version == "governance/1.1.0"
+
+
+# --------------------------------------------------------------------------
+# concession: what percentages cannot see
+# --------------------------------------------------------------------------
+
+
+def at_ceiling_order(line_value: str, lines: int = 10, ceiling: str = "10"):
+    """Every line exactly at its ceiling, margins healthy. Breaches nothing.
+
+    Ten lines of 300,000 concede 300,000 at a 10% ceiling — above the 250,000
+    default review threshold, which sits at roughly the 97th percentile of the
+    seeded corpus. A deal this size is exactly the case the report describes:
+    entirely within policy, and a lot of money.
+    """
+    return snapshot([
+        line(i, f"Line {i}", "Hardware", line_value, ceiling, ceiling, ceiling, "35")
+        for i in range(1, lines + 1)
+    ])
+
+
+def test_an_at_ceiling_order_still_scores_zero_on_breach_terms():
+    """The score is unchanged: nothing breached, so c1..c3 stay 0. The fix
+    routes, it does not inflate the score."""
+    o = decide(at_ceiling_order("300000")).output
+    assert o["aggregates"]["worst"] == 0.0
+    assert o["aggregates"]["leak_pct"] == 0.0
+    assert o["components"]["worst_line"] == 0.0
+    assert o["components"]["blended_leak"] == 0.0
+
+
+def test_a_large_concession_requires_review_even_at_a_low_score():
+    """THE REPORTED DEFECT. Ten lines at a 10% ceiling concede 100,000 and
+    breach nothing. Before this rule the quote auto-approved."""
+    o = decide(at_ceiling_order("300000")).output
+    assert o["concession"] == 300000.0
+    assert o["score"] < ROUTE_MANAGER_MIN
+    assert o["approval_chain"] == ["SALES_MANAGER"]
+    assert o["concession_review"] is True, (
+        "approval is required by concession value, not by score"
+    )
+
+
+def test_the_explanation_says_why_a_low_score_needs_approval():
+    """A manager seeing 'BDRS 3.0 → SALES_MANAGER' with no reason would
+    reasonably assume a bug."""
+    explanation = decide(at_ceiling_order("300000")).explanation
+    assert any("gives away this much" in e for e in explanation), explanation
+
+
+def test_a_bigger_order_at_the_same_percentage_escalates_further():
+    """Scaling the order used to change nothing at all — every term was a
+    percentage. Concession is absolute, so it scales."""
+    small = decide(at_ceiling_order("300000")).output
+    large = decide(at_ceiling_order("3000000")).output
+
+    assert small["score"] == large["score"], "percentages are scale-free"
+    assert small["concession"] == 300000.0
+    assert large["concession"] == 3000000.0
+    assert small["approval_chain"] == ["SALES_MANAGER"]
+    assert large["approval_chain"] == ["SALES_MANAGER", "FINANCE"]
+
+
+def test_a_modest_compliant_order_is_still_auto_approved():
+    """The guard must not become a tax on ordinary business — a small,
+    fully-compliant order still needs no approval."""
+    o = decide(at_ceiling_order("5000")).output
+    assert o["concession"] == 5000.0
+    assert o["approval_chain"] == []
+    assert o["concession_review"] is False
+
+
+def test_concession_only_ever_adds_oversight():
+    """Monotonicity in the second axis: a small giveaway can never rescue a
+    quote the score already condemned."""
+    breaching = snapshot([
+        line(1, "Over", "Hardware", "1000", "40", "10", "10", "35"),
+    ])
+    o = decide(breaching).output
+    assert o["concession"] < 250000, "well under the review threshold"
+    assert o["approval_chain"] == ["SALES_MANAGER", "FINANCE"], (
+        "a tiny concession must not undo a hard stop"
+    )
+
+
+def test_concession_thresholds_are_configurable():
+    """A currency amount is a business policy, not a constant in the engine."""
+    tight = at_ceiling_order("300000").model_copy(
+        update={"concession_review_threshold": D("50000"),
+                "concession_finance_threshold": D("80000")}
+    )
+    assert decide(tight).output["approval_chain"] == ["SALES_MANAGER", "FINANCE"]
+
+    loose = at_ceiling_order("300000").model_copy(
+        update={"concession_review_threshold": D("5000000"),
+                "concession_finance_threshold": D("9000000")}
+    )
+    assert decide(loose).output["approval_chain"] == []
+
+
+def test_every_golden_case_stays_below_the_default_review_threshold():
+    """Why §10's expected chains are unaffected: the defaults sit above every
+    published case. If a future edit changes that, this fails loudly rather
+    than silently rewriting the contract."""
+    from app.domain.governance import total_concession
+
+    for name, build in (("A", case_a), ("B", case_b), ("D", case_d)):
+        conceded = total_concession(build().lines)
+        assert conceded < D("250000"), f"case {name} concedes {conceded}"
+
+
+def test_verifier_rejects_a_chain_that_ignores_concession():
+    """The oracle must model concession routing itself.
+
+    When routing changed and the verifier did not, it correctly started
+    failing the engine — a 97.9% pass rate on a suite that should be 100%.
+    This pins that it still disagrees when routing is wrong, rather than
+    having been loosened until it agreed.
+    """
+    snap = at_ceiling_order("300000")
+    d = decide(snap)
+    assert d.output["approval_chain"] == ["SALES_MANAGER"]
+
+    ignored = d.model_copy(update={"output": {**d.output, "approval_chain": []}})
+    verdict, reasons = verify_governance(snap, ignored)
+    assert verdict is VerifierVerdict.FAIL
+    assert any("concession" in r for r in reasons), reasons
+
+
+def test_verifier_rejects_routing_weaker_than_the_score_demands():
+    snap = case_a()          # scores 41.9 -> SALES_MANAGER
+    d = decide(snap)
+    weakened = d.model_copy(update={"output": {**d.output, "approval_chain": []}})
+    verdict, reasons = verify_governance(snap, weakened)
+    assert verdict is VerifierVerdict.FAIL, reasons
+
+
+def test_verifier_passes_the_concession_routed_case(client_free=None):
+    snap = at_ceiling_order("300000")
+    verdict, reasons = verify_governance(snap, decide(snap))
+    assert verdict is VerifierVerdict.PASS, reasons

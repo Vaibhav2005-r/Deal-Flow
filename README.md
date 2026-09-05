@@ -14,8 +14,8 @@ file disagree, that file wins.
 All six build phases are complete, and all 18 screens of the product flow are built.
 
 ```
-361 passed in 13.6s          # full suite
- 72 passed in 0.04s          # tests/golden — the pre-push gate (budget: 2s)
+372 passed in 13.3s          # full suite
+ 83 passed in 0.05s          # tests/golden — the pre-push gate (budget: 2s)
   0.79s                      # make demo-reset (budget: 10s)
 ```
 
@@ -58,6 +58,16 @@ cd api && python -m pytest -q
 ## The thesis
 
 Two ideas carry the build.
+
+**0. The score cannot see money.** Every BDRS term is a percentage, so an order
+that sits exactly at ceiling on every line breaches nothing and scores ~0 no
+matter how large it is. The effect is inverted rather than merely absent: ten
+lines at a 10% ceiling concede 100,000 and score 3.0, while one line 1pp over
+concedes 11,000 and scores 7.6 — the order giving away nine times more is the
+one nobody reviews. Routing therefore also weighs the absolute value conceded.
+It only ever *adds* oversight, it does not enter the score (so §10's published
+values are untouched), and its thresholds are calibrated against the corpus so
+the gate fires on the top ~3% by value rather than taxing ordinary business.
 
 **1. The score is blended, not a threshold.** A single order-level discount limit is
 trivially gamed: five lines each 2–3pp over ceiling look harmless one at a time. The
@@ -206,6 +216,20 @@ ceiling above its tier cap is rejected at the API rather than stored as data `mi
 could never select.
 
 ---
+
+## A fourth defect, reported from use
+
+**The score is blind to concession value.** A rep discounting every line to
+exactly its ceiling breaches nothing, scores near zero, and auto-approves —
+whatever the order is worth. Twenty laptops at the 15% gold/Hardware ceiling
+concede ₹438,100 and used to pass with no one looking.
+
+Fixed as a routing gate rather than a new score term, so §10's expected values
+still hold. Finding it also exposed a second problem: the independent
+Governance verifier still modelled the old routing and began failing the
+engine — a 97.9% pass rate on a suite that should read 100%. That is the oracle
+doing its job, and it was updated to recompute concession itself rather than
+trust the number it is checking.
 
 ## Where we deliberately went beyond the specification
 
