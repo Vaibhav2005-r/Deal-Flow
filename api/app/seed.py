@@ -40,6 +40,7 @@ from app.models.tables import (
     QuoteLine,
     Stock,
     SubscriptionPlan,
+    TierPolicy,
     User,
     Warehouse,
 )
@@ -122,14 +123,27 @@ USERS: list[tuple[str, str, Role]] = [
     ("root@dealflow.example", "System Administrator", Role.ADMIN),
 ]
 
+#: tier -> the cap that tier may never exceed, whatever the category.
+#: From the product flow's "Discount tiers and approval chains" screen.
+TIER_CEILINGS: dict[Tier, str] = {
+    Tier.GOLD: "15",
+    Tier.SILVER: "10",
+    Tier.BRONZE: "5",
+}
+
 #: (tier, category) -> (ceiling_pct, floor_margin_pct).  UNIQUE(tier, category)
 #: is what lets the Governance verifier prove a ceiling was looked up, not
 #: defaulted — so every combination must exist.
+#:
+#: Every value here is <= its tier cap in TIER_CEILINGS. A category ceiling
+#: above the tier cap would be dead data: min() could never select it, so the
+#: policy screen would advertise a discount the engine refuses to allow.
+#: `test_no_category_ceiling_exceeds_its_tier_cap` enforces that.
 POLICY: dict[tuple[Tier, str], tuple[str, str]] = {}
 _CEILINGS = {
-    Tier.GOLD: {"Hardware": "15", "Software": "20", "Service": "10", "Subscription": "18"},
-    Tier.SILVER: {"Hardware": "12", "Software": "16", "Service": "8", "Subscription": "14"},
-    Tier.BRONZE: {"Hardware": "8", "Software": "12", "Service": "5", "Subscription": "10"},
+    Tier.GOLD: {"Hardware": "15", "Software": "15", "Service": "10", "Subscription": "12"},
+    Tier.SILVER: {"Hardware": "10", "Software": "10", "Service": "8", "Subscription": "9"},
+    Tier.BRONZE: {"Hardware": "5", "Software": "5", "Service": "4", "Subscription": "5"},
 }
 _FLOORS = {"Hardware": "20", "Software": "35", "Service": "20", "Subscription": "30"}
 for _tier, _cats in _CEILINGS.items():
@@ -208,6 +222,9 @@ def seed_reference(session: Session, rng: random.Random) -> dict:
             )
         )
     session.add_all(products)
+
+    for tier, ceiling in TIER_CEILINGS.items():
+        session.add(TierPolicy(tier=tier, ceiling_pct=Decimal(ceiling)))
 
     for (tier, category), (ceiling, floor) in POLICY.items():
         session.add(
@@ -517,6 +534,7 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
             "customers": len(ref["customers"]),
             "warehouses": len(ref["warehouses"]),
             "users": session.scalar(select(func.count()).select_from(User)),
+            "tier_policies": len(TIER_CEILINGS),
             "discount_policies": len(POLICY),
             "historical_orders": orders,
             "affinity_rules": affinity_rules,

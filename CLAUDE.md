@@ -300,6 +300,16 @@ All tables get `id BIGSERIAL PRIMARY KEY`, `created_at`, `updated_at`.
 - `product(sku, name, category, list_price, unit_cost, is_subscription, plan_id, is_promoted)`
 - `product_variant(product_id, attribute, value, extra_price)`
 - `price_list(name, currency)` / `price_list_item(price_list_id, product_id, price)`
+- `tier_policy(tier, ceiling_pct)` — **unique(tier)**. The cap a tier may never
+  exceed, whatever the category (Bronze 5 / Silver 10 / Gold 15). Added after
+  §6 was written: §5.1 scores against `min(tier_ceiling_pct, category_ceiling_pct)`,
+  which needs two independent ceilings, and §6 originally stored only one row
+  per (tier, category). The tier term was therefore derived as MAX over that
+  tier's own categories — a value that by construction can never be smaller
+  than the category it is compared against, so `min()` always returned the
+  category ceiling and the tier limb of the formula was dead. Every
+  `discount_policy.ceiling_pct` must be **≤** its tier cap, or it is data
+  `min()` can never select.
 - `discount_policy(tier, category, ceiling_pct, floor_margin_pct)` — **unique(tier, category)**
 - `approval_rule(min_score, max_score, steps JSONB)` — ordered role list
 - `warehouse(code, name, ship_fixed_cost, unit_ship_cost)`

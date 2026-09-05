@@ -5,17 +5,22 @@ they build a Snapshot here, call the domain, persist the Decision, and return.
 
 CEILING RESOLUTION
 ------------------
-§5.1 takes `ceiling_i = min(tier_ceiling_pct, category_ceiling_pct)`, while §6
-stores one `discount_policy` row per UNIQUE(tier, category).  The two are
-reconciled like this:
+§5.1 scores against `ceiling_i = min(tier_ceiling_pct, category_ceiling_pct)`,
+which needs TWO independent ceilings:
 
-  category_ceiling_pct = the (tier, category) policy row — the specific rule
-  tier_ceiling_pct     = MAX(ceiling_pct) across that tier's policies — the
-                         broadest this tier is ever allowed, an upper bound the
-                         category rule can only tighten
+  tier_ceiling_pct     = `tier_policy` — the cap this customer tier may never
+                         exceed, whatever the category (Bronze 5 / Silver 10 /
+                         Gold 15, per the product flow's discount-tiers screen)
+  category_ceiling_pct = the `discount_policy` row for (tier, category) — the
+                         per-category rule, which may tighten the tier cap
+                         further but never loosen it
 
-min() then yields the policy ceiling in the normal case, which reproduces the
-golden Case A values exactly (GOLD/Hardware 15, GOLD/Service 10).
+Both are looked up. Neither is derived, and neither is defaulted: a missing
+row is a hard error. That matters — this used to take the tier ceiling as
+MAX(ceiling_pct) over that tier's own categories, a value that by construction
+can never be smaller than the category it is compared against, so `min()`
+always returned the category ceiling and the tier limb of the formula was
+dead. A Gold customer could take 20% on a category whose tier cap is 15%.
 
 Every resolved line records `ceiling_source`, naming the policy row it came
 from.  A line whose ceiling could NOT be resolved is a hard error, never a
@@ -41,6 +46,7 @@ from app.models.tables import (
     Product,
     Quotation,
     QuoteLine,
+    TierPolicy,
 )
 
 DEFAULT_LARGE_ORDER_THRESHOLD = Decimal("500000")
@@ -75,7 +81,16 @@ def build_governance_snapshot(
         )
 
     by_category = {p.category: p for p in policies}
-    tier_ceiling = max(p.ceiling_pct for p in policies)
+
+    tier_policy = session.scalar(
+        select(TierPolicy).where(TierPolicy.tier == customer.tier)
+    )
+    if tier_policy is None:
+        raise PolicyResolutionError(
+            f"no tier_policy row for tier {customer.tier!r} — cannot resolve "
+            f"the tier ceiling, refusing to default"
+        )
+    tier_ceiling = tier_policy.ceiling_pct
 
     lines = session.scalars(
         select(QuoteLine)
@@ -109,7 +124,10 @@ def build_governance_snapshot(
                                       product.unit_cost),
                 floor_margin_pct=policy.floor_margin_pct,
                 is_recurring=line.is_recurring,
-                ceiling_source=f"discount_policy:{customer.tier}/{product.category}",
+                ceiling_source=(
+                    f"tier_policy:{customer.tier}"
+                    f"+discount_policy:{customer.tier}/{product.category}"
+                ),
             )
         )
 

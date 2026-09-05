@@ -107,6 +107,26 @@ class PriceListItem(Entity):
     price: Mapped[Decimal] = mapped_column(Money, nullable=False)
 
 
+class TierPolicy(Entity):
+    """The tier-level discount ceiling — the cap a customer tier may never
+    exceed, whatever the category.
+
+    §5.1 scores against `min(tier_ceiling_pct, category_ceiling_pct)`, which
+    needs TWO independent ceilings. §6 only stores one row per
+    (tier, category), so before this table existed the tier term was derived
+    as MAX over that tier's own categories — a value that can never bind,
+    leaving the tier limb of the formula dead. The product flow's "Discount
+    tiers and approval chains" screen shows it as its own table
+    (Bronze 5 / Silver 10 / Gold 15), which is what this is.
+    """
+
+    __tablename__ = "tier_policy"
+    __table_args__ = (UniqueConstraint("tier", name="uq_tier_policy_tier"),)
+
+    tier: Mapped[Tier] = mapped_column(String(20), nullable=False)
+    ceiling_pct: Mapped[Decimal] = mapped_column(Percent, nullable=False)
+
+
 class DiscountPolicy(Entity):
     """The ceiling lookup behind BDRS.  unique(tier, category) is what lets the
     Governance verifier assert a ceiling was really resolved, not defaulted."""
