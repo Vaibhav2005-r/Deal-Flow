@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: dealflow
+      POSTGRES_PASSWORD: dealflow
+      POSTGRES_DB: dealflow
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dealflow -d dealflow"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql+psycopg://dealflow:dealflow@postgres:5432/dealflow
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+    volumes: ["./api:/srv"]
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  web:
+    image: node:22-alpine
+    working_dir: /srv
+    environment:
+      VITE_API_BASE: http://localhost:8000
+    ports: ["5173:5173"]
+    depends_on: [api]
+    volumes: ["./web:/srv"]
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+
+volumes:
+  pgdata:

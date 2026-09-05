@@ -1,0 +1,10 @@
+Generic single-database configuration for DealFlow360.
+
+The initial migration is generated against a running Postgres:
+
+    docker compose up -d postgres
+    cd api && alembic revision --autogenerate -m "initial schema"
+    alembic upgrade head
+
+`make migrate-init` wraps the first two steps. Every migration is checked in;
+nobody edits the database by hand (spec §12).
