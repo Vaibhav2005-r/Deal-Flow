@@ -7,10 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_internal_user, get_session
-from app.api.schemas import LoginRequest, RegisterRequest, SignupRequest, TokenResponse
+from app.api.schemas import LoginRequest, PortalSignupRequest, RegisterRequest, SignupRequest, TokenResponse
 from app.api.security import hash_password, issue_token, verify_password
-from app.models.enums import Role
-from app.models.tables import User
+from app.models.enums import Role, Tier
+from app.models.tables import Customer, User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -178,4 +178,65 @@ def list_profiles(session: Session = Depends(get_session)) -> list[dict]:
         }
         for u in users
     ]
+
+
+@router.post("/portal-signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def portal_signup(body: PortalSignupRequest, session: Session = Depends(get_session)) -> TokenResponse:
+    """Customer portal signup: creates a portal customer account and issues portal token."""
+    clean_email = body.email.strip().lower()
+    if not clean_email or "@" not in clean_email:
+        raise HTTPException(status_code=400, detail="A valid email address is required")
+    if not body.password or len(body.password) < 3:
+        raise HTTPException(status_code=400, detail="Password must be at least 3 characters")
+
+    existing = session.scalar(select(User).where(func.lower(User.email) == clean_email))
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+    name = (body.full_name or "").strip()
+    company = (body.company_name or "").strip()
+    if not name:
+        name = company or clean_email.split("@")[0].replace(".", " ").title()
+    if not company:
+        company = f"{name}'s Organization"
+
+    user = User(
+        email=clean_email,
+        password_hash=hash_password(body.password),
+        role=Role.PORTAL,
+        full_name=name,
+    )
+    try:
+        session.add(user)
+        session.flush()
+
+        customer = Customer(
+            name=company,
+            tier=Tier.BRONZE,
+            user_id=user.id,
+            first_order_at=None,
+        )
+        session.add(customer)
+        session.flush()
+    except Exception as e:
+        session.rollback()
+        err_str = str(e).lower()
+        if "duplicate" in err_str or "1062" in str(e) or "unique" in err_str:
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+        raise
+
+    return TokenResponse(
+        token=issue_token(
+            user.id,
+            "portal",
+            str(user.role),
+            email=user.email,
+            full_name=user.full_name,
+        ),
+        scope="portal",
+        role=str(user.role),
+        user_id=user.id,
+        full_name=user.full_name,
+        email=user.email,
+    )
 
