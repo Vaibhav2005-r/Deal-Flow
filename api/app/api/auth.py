@@ -56,8 +56,15 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)) -> Toke
         role=SELF_SERVICE_ROLE,
         password_hash=hash_password(body.password),
     )
-    session.add(user)
-    session.flush()
+    try:
+        session.add(user)
+        session.flush()
+    except Exception as e:
+        session.rollback()
+        err_str = str(e).lower()
+        if "duplicate" in err_str or "1062" in str(e) or "unique" in err_str:
+            raise HTTPException(status_code=409, detail="that email is already registered")
+        raise
 
     return TokenResponse(
         token=issue_token(user.id, "internal", str(user.role)),
@@ -70,6 +77,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)) -> Toke
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, session: Session = Depends(get_session)) -> TokenResponse:
+    """Workspace user registration endpoint supporting role-based onboarding (rep, manager, finance)."""
     clean_email = body.email.strip().lower()
     if not clean_email or "@" not in clean_email:
         raise HTTPException(status_code=400, detail="A valid email address is required")
@@ -99,8 +107,15 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
         role=role_enum,
         full_name=name,
     )
-    session.add(user)
-    session.flush()
+    try:
+        session.add(user)
+        session.flush()
+    except Exception as e:
+        session.rollback()
+        err_str = str(e).lower()
+        if "duplicate" in err_str or "1062" in str(e) or "unique" in err_str:
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+        raise
 
     return TokenResponse(
         token=issue_token(user.id, "internal", str(user.role)),
