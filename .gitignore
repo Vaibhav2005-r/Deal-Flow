@@ -15,3 +15,4 @@ build/
 .idea/
 .vscode/
 *.tsbuildinfo
+dealflow_backup_*
