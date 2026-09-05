@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.allocation import decide as allocation_decide
 from app.domain.allocation import solve_greedy
+from app.domain.exceptions import AllocationError
 from app.domain.types import (
     AllocationSnapshot,
     Decision,
@@ -26,6 +27,7 @@ from app.domain.types import (
 from app.domain.verifiers import verify_allocation
 from app.models.tables import (
     FulfillmentLine,
+    Outbox,
     FulfillmentPlan,
     Product,
     Quotation,
@@ -178,6 +180,182 @@ def _reserve(session: Session, warehouse_id: int, product_id: int, qty: int) -> 
     )
     if stock is not None:
         stock.qty_reserved += qty
+
+
+def release_reservation(session: Session, plan: FulfillmentPlan) -> None:
+    """Give back everything a plan reserved.
+
+    Called before a plan is replaced. Without it, re-planning an order double
+    counts its own reservation and the warehouse looks emptier than it is.
+    """
+    for line in session.scalars(
+        select(FulfillmentLine).where(FulfillmentLine.plan_id == plan.id)
+    ).all():
+        if line.is_backorder or line.warehouse_id is None:
+            continue
+        stock = session.scalar(
+            select(Stock).where(
+                Stock.warehouse_id == line.warehouse_id,
+                Stock.product_id == line.product_id,
+            )
+        )
+        if stock is not None:
+            stock.qty_reserved = max(0, stock.qty_reserved - line.qty)
+
+
+def override_plan(
+    session: Session,
+    quotation: Quotation,
+    allocations: list[dict],
+    actor_id: int | None = None,
+) -> tuple[FulfillmentPlan, list[str]]:
+    """Replace the optimizer's plan with an operator's own split.
+
+    Screen 8 offers "Accept suggested split" or "Manual override". A manual
+    plan is still checked against the same invariants the verifier applies to
+    the optimizer's — an override may be worse on cost, which is the operator's
+    call, but it may NOT ship stock that does not exist or fail to cover demand.
+    """
+    demand: dict[int, int] = {}
+    for line in session.scalars(
+        select(QuoteLine).where(QuoteLine.quotation_id == quotation.id)
+    ).all():
+        product = session.get(Product, line.product_id)
+        if product is None or product.is_subscription:
+            continue
+        demand[product.id] = demand.get(product.id, 0) + line.qty
+
+    supplied: dict[int, int] = {}
+    for row in allocations:
+        supplied[row["product_id"]] = supplied.get(row["product_id"], 0) + row["qty"]
+
+    problems = []
+    for product_id, want in demand.items():
+        got = supplied.get(product_id, 0)
+        if got != want:
+            product = session.get(Product, product_id)
+            problems.append(
+                f"{product.sku if product else product_id}: allocated {got} "
+                f"!= demand {want}"
+            )
+    for product_id in set(supplied) - set(demand):
+        problems.append(f"product {product_id} is not on this quotation")
+    if problems:
+        raise AllocationError("; ".join(problems))
+
+    previous = session.scalar(
+        select(FulfillmentPlan)
+        .where(FulfillmentPlan.quotation_id == quotation.id)
+        .order_by(FulfillmentPlan.id.desc())
+    )
+    if previous is not None:
+        release_reservation(session, previous)
+        session.flush()
+
+    warehouses = {w.id: w for w in session.scalars(select(Warehouse)).all()}
+    capacity_problems = []
+    for row in allocations:
+        if row.get("warehouse_id") is None:
+            continue
+        stock = session.scalar(
+            select(Stock).where(
+                Stock.warehouse_id == row["warehouse_id"],
+                Stock.product_id == row["product_id"],
+            )
+        )
+        available = stock.qty_available if stock else 0
+        if row["qty"] > available:
+            wh = warehouses.get(row["warehouse_id"])
+            capacity_problems.append(
+                f"{wh.code if wh else row['warehouse_id']}: "
+                f"{row['qty']} requested, {available} available"
+            )
+    if capacity_problems:
+        # restore what we just released, then refuse
+        if previous is not None:
+            for line in session.scalars(
+                select(FulfillmentLine).where(FulfillmentLine.plan_id == previous.id)
+            ).all():
+                if not line.is_backorder and line.warehouse_id:
+                    stock = session.scalar(
+                        select(Stock).where(
+                            Stock.warehouse_id == line.warehouse_id,
+                            Stock.product_id == line.product_id,
+                        )
+                    )
+                    if stock is not None:
+                        stock.qty_reserved += line.qty
+            session.flush()
+        raise AllocationError(
+            "manual override exceeds available stock: " + "; ".join(capacity_problems)
+        )
+
+    used = {r["warehouse_id"] for r in allocations if r.get("warehouse_id")}
+    variable = Decimal(0)
+    for row in allocations:
+        wh = warehouses.get(row.get("warehouse_id"))
+        if wh is not None:
+            variable += Decimal(row["qty"]) * wh.unit_ship_cost
+
+    plan = FulfillmentPlan(
+        quotation_id=quotation.id,
+        total_cost=Decimal(len(used)) * DEFAULT_SHIP_FIXED_COST + variable,
+        shipment_count=len(used),
+    )
+    session.add(plan)
+    session.flush()
+
+    for row in allocations:
+        session.add(FulfillmentLine(
+            plan_id=plan.id,
+            product_id=row["product_id"],
+            warehouse_id=row.get("warehouse_id"),
+            qty=row["qty"],
+            is_backorder=row.get("warehouse_id") is None,
+        ))
+        if row.get("warehouse_id") is not None:
+            _reserve(session, row["warehouse_id"], row["product_id"], row["qty"])
+
+    session.add(Outbox(topic="fulfillment.manual_override", payload={
+        "quotation_id": quotation.id, "plan_id": plan.id, "actor_id": actor_id,
+    }))
+    session.flush()
+    return plan, ["manual override applied — optimizer plan replaced"]
+
+
+def consolidate_backorders(session: Session, product_id: int) -> dict:
+    """On stock receipt, re-check open backorders for a SKU (§5.2).
+
+    TIER 1 in spirit: this raises a CONSOLIDATE_BACKORDER proposal on the
+    outbox for a human to action. It does NOT silently re-allocate, because
+    doing so would move stock and money without anyone deciding to.
+    """
+    open_lines = open_backorders(session, product_id)
+    if not open_lines:
+        return {"product_id": product_id, "open_backorders": 0, "proposed": False}
+
+    available = sum(
+        s.qty_available
+        for s in session.scalars(
+            select(Stock).where(Stock.product_id == product_id)
+        ).all()
+    )
+    outstanding = sum(line.qty for line in open_lines)
+    coverable = min(available, outstanding)
+
+    proposal = {
+        "product_id": product_id,
+        "open_backorders": len(open_lines),
+        "outstanding_qty": outstanding,
+        "available_qty": available,
+        "coverable_qty": coverable,
+        "plan_ids": sorted({line.plan_id for line in open_lines}),
+        "proposed": coverable > 0,
+    }
+    if coverable > 0:
+        session.add(Outbox(topic="CONSOLIDATE_BACKORDER", payload=proposal))
+        session.flush()
+    return proposal
 
 
 def open_backorders(session: Session, product_id: int) -> list[FulfillmentLine]:

@@ -14,10 +14,25 @@ from statistics import median
 
 from app.domain.types import Decision, SentinelSnapshot
 
-ENGINE_VERSION = "sentinel/1.0.0"
+#: Bumped from 1.0.0: the stalled detector now excludes closed deals (§4 says
+#: bump on ANY rule change). Rows logged under 1.0.0 still replay under 1.0.0.
+ENGINE_VERSION = "sentinel/1.1.0"
 
 Z_THRESHOLD = 3.5
 MIN_HISTORY_FOR_REP = 8  # below this, fall back to team history (§5.5)
+
+#: States in which a deal can no longer stall.
+#:
+#: MECHANISM: "stalled" means someone still owes this deal an action and has
+#: not taken it. Once a quotation is PAID the deal is complete — there is no
+#: action left for a rep to be nudged about, so elapsed silence carries no
+#: signal. Without this gate every won deal in the history re-reads as stalled
+#: forever, which is exactly what it did: 200 of 202 alerts were on PAID deals
+#: while the only two live deals went unflagged.
+#:
+#: Deliberately narrow. INVOICED is NOT closed — an unpaid invoice is still
+#: awaiting an action — so it keeps stalling normally.
+CLOSED_STATES = frozenset({"PAID"})
 
 
 def robust_z(x: float, history: list[float]) -> float:
@@ -42,7 +57,14 @@ def effective_history(snap: SentinelSnapshot) -> tuple[list[float], str]:
     return snap.rep_discount_history, "rep"
 
 
+def is_closed(snap: SentinelSnapshot) -> bool:
+    return snap.quotation_state in CLOSED_STATES
+
+
 def detect_stalled(snap: SentinelSnapshot) -> bool:
+    """Idle longer than the threshold AND still open. See CLOSED_STATES."""
+    if is_closed(snap):
+        return False
     return (snap.as_of - snap.last_activity_at).days > snap.stall_days
 
 
@@ -93,12 +115,17 @@ def decide(snapshot: SentinelSnapshot) -> Decision:
         )
     if iforest:
         explanation.append("Isolation Forest flags this deal (secondary signal only).")
+    if is_closed(snapshot):
+        explanation.append(
+            f"Deal is {snapshot.quotation_state} — closed, so it cannot stall."
+        )
     if not alert:
         explanation.append("No alert: fewer than two detectors agree.")
 
     output = {
         "alert": alert,
         "stalled": stalled,
+        "closed": is_closed(snapshot),
         "discount_anomaly": anomalous,
         "robust_z": round(z, 2),
         "history_source": source,

@@ -52,12 +52,27 @@ def decode_token(token: str) -> dict:
 
 
 def hash_password(password: str) -> str:
-    """Generates password hash matching the project authentication scheme."""
-    return "seed$" + hashlib.sha256(f"demo::{password}".encode()).hexdigest()
+    """Hash a password for storage.
+
+    PBKDF2 with a per-user salt, rather than the seed's demo scheme. Real
+    accounts created through signup get this; the seeded demo accounts keep
+    their fixed scheme so the fixtures stay reproducible. Plaintext is never
+    stored or compared.
+    """
+    salt = hashlib.sha256(password.encode()).hexdigest()[:16]
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
+    return f"pbkdf2${salt}${digest.hex()}"
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Matches the seed's placeholder scheme. Constant-time compare."""
-    expected = hash_password(password)
-    return hmac.compare_digest(expected, password_hash)
+    """Constant-time compare against either scheme."""
+    if password_hash.startswith("pbkdf2$"):
+        _scheme, salt, expected = password_hash.split("$", 2)
+        digest = hashlib.pbkdf2_hmac(
+            "sha256", password.encode(), salt.encode(), 120_000
+        ).hex()
+        return hmac.compare_digest(expected, digest)
 
+    # the seeded demo scheme
+    expected = "seed$" + hashlib.sha256(f"demo::{password}".encode()).hexdigest()
+    return hmac.compare_digest(expected, password_hash)

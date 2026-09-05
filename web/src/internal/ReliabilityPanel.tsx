@@ -83,8 +83,27 @@ export default function ReliabilityPanel() {
             <p className="text-2xl font-extrabold text-slate-900 mt-1">{stats.total_invocations}</p>
           </div>
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-xs font-medium text-emerald-600">Verifier Pass Rate</p>
-            <p className="text-2xl font-extrabold text-emerald-600 mt-1">{stats.pass_rate_pct.toFixed(1)}%</p>
+            {stats.pass_rate_pct === null ? (
+              <>
+                {/* Nothing has been verified yet. Showing a green 100% here
+                    would claim a perfect reliability record we have not earned. */}
+                <p className="text-xs font-medium text-slate-500">Verifier Pass Rate</p>
+                <p className="text-2xl font-extrabold text-slate-400 mt-1">not measured</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {stats.skipped_calls} call(s) logged, none verified
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-emerald-600">Verifier Pass Rate</p>
+                <p className="text-2xl font-extrabold text-emerald-600 mt-1">
+                  {stats.pass_rate_pct.toFixed(1)}%
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  over {stats.verified_calls} verified call(s)
+                </p>
+              </>
+            )}
           </div>
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p className="text-xs font-medium text-slate-500">Average Latency</p>

@@ -3,46 +3,35 @@
 B2B sales operations platform: **Quotation → Discount Governance → Approval Chain →
 Warehouse Fulfillment → Hybrid Billing → Customer Portal Negotiation → Reporting.**
 
+See [`CLAUDE.md`](CLAUDE.md) for the specification — the exact constants, signatures
+and expected values this implementation is built against. Where this README and that
+file disagree, that file wins.
+
 ---
 
 ## Status
 
+All six build phases are complete, and all 18 screens of the product flow are built.
+
+```
+361 passed in 13.6s          # full suite
+ 72 passed in 0.04s          # tests/golden — the pre-push gate (budget: 2s)
+  0.79s                      # make demo-reset (budget: 10s)
+```
+
 | Phase | Gate | State |
 |---|---|---|
-| **1 — Foundation** | `make up` works everywhere | **partial** — see *Known gaps* |
-| **2 — Domain core** | `make test` green | **done** |
-| **3 — The spine** | rep builds an over-ceiling quote, manager approves, in the browser | **done — driven in a real browser** |
-| 4 — Second ring | fulfillment split, subscriptions, upsell | not started |
-| 5 — The loop | portal counter → re-score → re-entry | not started |
-| 6 — Surface | dashboards, reporting, exports | not started |
+| 1 — Foundation | `make up` works everywhere | **done** — migration checked in, `alembic check` clean |
+| 2 — Domain core | `make test` green | **done** — every §10 value matches |
+| 3 — The spine | over-ceiling quote → manager approves, in the browser | **done** — driven in a real browser |
+| 4 — Second ring | fulfillment split, subscriptions, upsell | **done** |
+| 5 — The loop | portal counter → re-score → chain re-entry | **done** |
+| 6 — Surface | dashboards, reporting, exports, audit | **done** |
 
-```
-189 passed in 1.43s          # full suite
- 60 passed in 0.03s          # tests/golden — the pre-push gate (budget: 2s)
-  0.40s                      # make demo-reset (budget: 10s)
-```
-
-### The Phase 3 gate, actually executed
-
-Not asserted at the service boundary and called done — driven through the running
-UI against a live API and a seeded database:
-
-1. Priya (rep) signs in, picks a Gold customer, opens quote #202.
-2. She adds installation at **18%** against a **10%** ceiling. The builder warns
-   *before* she commits: "gold / Service ceiling is 10% — this line is 8.0pp over".
-   Governance is visible, not a trap sprung after the fact.
-3. Adding lines leaves the quote in `DRAFT`. It leaves `DRAFT` only via Confirm (§7).
-4. Confirm scores it: **BDRS 40.0**, verifier `PASS`, routed to `SALES_MANAGER`, with
-   the explanation rendered verbatim —
-   *"On-Site Installation & Setup: 18% given vs 10% ceiling → 8.0pp over (contributes 32.0 of 40)"*.
-5. James (manager) signs in. The quote is in his queue with the breaching line
-   highlighted, its ceiling and margin beside it.
-6. He approves → `READY_TO_FULFILL`, queue empties.
-
-**Driving the real UI found a bug the API tests had missed:** adding a line to a
-`DRAFT` re-scored it and pushed it straight to `PENDING_MANAGER`, because
-`mutate_lines` re-scored unconditionally. The state machine requires `DRAFT` leaves `DRAFT`
-only on `confirm`. Fixed, with a regression test.
+**Quick tour:** sign in as `james.whitfield@dealflow.example` (the seeded accounts use
+their own email as the password) and the landing page shows what needs attention. The
+Config tab is where the governance rules live; the Audit tab is the decision log with
+one-click replay.
 
 ---
 
@@ -50,14 +39,14 @@ only on `confirm`. Fixed, with a regression test.
 
 ```bash
 make up            # postgres + api + web
-make migrate-init  # generate the first migration (once, needs postgres up)
-make migrate
-make seed
+make migrate       # alembic upgrade head
+make seed          # 30 products · 12 customers · 3 warehouses · 200 historical orders
 make test
 make hooks         # wire the golden-test pre-push hook
 ```
 
-Running the domain tests needs no database and no Docker:
+The API and the whole test suite also run with no database server and no Docker —
+column types are dialect-portable, so everything falls back to SQLite:
 
 ```bash
 cd api && python -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
@@ -66,110 +55,179 @@ cd api && python -m pytest -q
 
 ---
 
-## What is built
+## The thesis
+
+Two ideas carry the build.
+
+**1. The score is blended, not a threshold.** A single order-level discount limit is
+trivially gamed: five lines each 2–3pp over ceiling look harmless one at a time. The
+Blended Discount Risk Score (§5.1) aggregates the worst single breach, the value-weighted
+leak across the whole order, the net-weighted margin shortfall, and context. Golden
+Case B is the proof, and it is asserted **both ways** — that a naive "flag any line >5pp
+over" rule passes the quote, and that BDRS still routes it to a manager.
+
+**2. Every number is defensible after the fact.** Every agent call writes one row to
+`decision_log` with the full input snapshot, so any decision can be replayed
+byte-for-byte against the pinned engine version that produced it. The Audit screen does
+this in one click. Replay is 100% on every deterministic agent.
+
+---
+
+## Architecture
 
 ### `api/app/domain/` — pure, deterministic, no I/O
 
-Only stdlib + `pydantic` + `numpy`. No SQLAlchemy, no FastAPI, no `datetime.now()`,
-no `random`, no `os.environ`. Time is injected as `as_of: date`.
+Nine modules importing only stdlib, `pydantic` and `numpy`. No SQLAlchemy, no FastAPI,
+no `datetime.now()`, no `random`, no `os.environ`. Time is injected as `as_of: date`.
 `tests/unit/test_domain_purity.py` walks the AST of every module here and fails the
-build on violation — written early on purpose, because this is what keeps the
-architecture honest at hour 19.
+build on violation.
 
-| Module | What it does |
-|---|---|
-| `types.py` | `Snapshot`/`Decision`, canonical JSON, sha256 input hashing |
-| `governance.py` | BDRS + approval routing |
-| `allocation.py` | exact subset solver + greedy fallback + backorders |
-| `billing.py` | day-based proration, hybrid invoice partitioning |
-| `sentinel.py` | robust-z, small-n guard, ≥2-detector consensus |
-| `verifiers.py` | independent oracles, one per agent |
-| `exceptions.py` | domain errors, mapped to HTTP in exactly one handler |
+| Module | Spec | What it does |
+|---|---|---|
+| `types.py` | §4 | `Snapshot`/`Decision`, canonical JSON, sha256 input hashing |
+| `governance.py` | §5.1 | BDRS + approval routing |
+| `allocation.py` | §5.2 | exact subset solver + greedy fallback + backorders |
+| `billing.py` | §5.3 | day-based proration, hybrid invoice partitioning |
+| `advisor.py` | §5.4 | upsell ranking over precomputed affinity |
+| `sentinel.py` | §5.5 | robust-z, small-n guard, ≥2-detector consensus |
+| `pricing.py` | §5.4 | the one margin function the whole system shares |
+| `verifiers.py` | §8 | independent oracles, one per agent |
+| `exceptions.py` | §12 | domain errors, mapped to HTTP in exactly one handler |
 
-**The exact allocation solver.** Naive enumeration of integer allocations is
-exponential and unnecessary. Unit cost depends only on the *warehouse*, and stock is
-per `(warehouse, sku)` so SKUs never compete for a shared pool — therefore for a fixed
-set of warehouses, each SKU can be filled cheapest-first independently, and that is
-optimal. So we enumerate warehouse *subsets* (2^W) and fill greedily inside each. This
-reproduces the spec's 337.5 optimum exactly, with the plan it names.
+**The exact allocation solver** doesn't enumerate integer allocations. Unit cost depends
+only on the warehouse and stock is per `(warehouse, sku)`, so for a fixed warehouse
+subset each SKU fills cheapest-first independently — and that is optimal. Enumerating
+subsets reproduces the spec's 337.5 optimum with the exact plan it names.
 
 **The governance verifier is genuinely independent.** It recomputes the score from raw
 snapshot fields with plain arithmetic and imports no aggregate helper from
-`governance.py`. A copy-pasted re-check would agree with a bug; this one can disagree.
-
-### Phase 3 — the spine
-
-| Piece | Notes |
-|---|---|
-| `services/state_machine.py` | State transition table as **data**, not branching in routers |
-| `services/scoring.py` | one scoring implementation, shared by `confirm` and the re-score path |
-| `services/snapshots.py` | ORM → pure domain; resolves every ceiling from `discount_policy` |
-| `services/quote_lines.py` | the only module that may create, edit or delete a line |
-| `app/api/` | thin routers: build a Snapshot, call the domain, persist, return |
-| `app/seed.py` | 30 products · 12 customers · 3 warehouses · 200 historical orders |
-
-The seed is deterministic (fixed-seed PRNG, verified by fingerprint across runs) and
-its discount history is shaped to be *usable*: a typical discount scores robust-z ≈ 0
-against its rep's history while a 40% outlier scores ≈ +6.9, so the anomaly detector has
-a real distribution to work against rather than uniform noise.
+`governance.py`. A copy-pasted re-check agrees with a bug; this one can disagree.
 
 ### Structural invariants, asserted as tests
 
-These are claims the specification makes that quietly become false under deadline pressure, so
-each is a test rather than a convention:
+Claims that quietly become false under deadline pressure, so each is a test rather than
+a convention:
 
 | Claim | Test |
 |---|---|
-| domain/ stays pure | `test_domain_purity.py` — AST walk |
+| `domain/` stays pure | `test_domain_purity.py` — AST walk |
 | every agent call writes `decision_log` | `test_decision_log.py` |
-| replay is byte-for-byte | `test_decision_contract.py` |
-| no line edit bypasses re-scoring | `test_rescore_invariant.py` — AST walk |
-| the portal is not the internal screen with a flag | `test_portal_separation.py` |
+| replay is byte-for-byte (§10.5) | `test_decision_contract.py` |
+| no line edit bypasses re-scoring (§7) | `test_rescore_invariant.py` — AST walk |
+| the portal is not the internal screen with a flag (§1) | `test_portal_separation.py` |
 | BDRS beats the naive per-line rule | `test_case_b_beats_the_naive_rule` |
 | a DRAFT is never scored behind the rep's back | `test_adding_a_line_to_a_draft_does_not_score_it` |
-| an edit mid-chain re-scores too | `test_editing_a_quote_awaiting_approval_rescores_it` |
-| idempotency, optimistic concurrency, outbox | `tests/spine/test_self_governing.py` |
+| `make seed` is reproducible | `test_seed_determinism.py` — AST walk |
+| a closed deal cannot stall | `test_a_paid_deal_never_stalls` |
+| the tier ceiling actually binds | `test_tier_ceilings.py` |
 
-### `api/app/models/` — 27 tables
+### Data & API
 
-Money `NUMERIC(14,2)` as `Decimal`; percentages `NUMERIC(5,2)` as whole numbers.
-`decision_log` is append-only. `outbox` is written in the same transaction as the state
-change it belongs to. `idempotency_key` stops a double-click becoming two invoices.
+28 tables. Money `NUMERIC(14,2)` as `Decimal`; percentages `NUMERIC(5,2)` as whole
+numbers. `decision_log` is append-only; `outbox` rows are written in the same
+transaction as the state change they belong to; `idempotency_key` stops a double-click
+becoming two invoices. 60 endpoints across quoting, approvals, fulfillment, billing,
+the portal, catalog, admin config and reporting.
 
 ### `web/src/` — two separate router trees
 
-`internal/` and `portal/` have different auth scopes stored under different keys, and
-neither imports from the other. Enforced by `test_portal_separation.py`.
+15 internal screens and 3 portal screens, with different auth scopes stored under
+different keys. Neither tree imports from the other, enforced by a test. The portal
+payload carries no margin, ceiling, cost, risk score or approval data — a customer sees
+commercial terms only.
 
 ---
 
-## Known gaps
+## The 18-screen product flow
 
-**1. No initial Alembic migration is checked in.** Autogenerate diffs the models
-against a live database, and there is no Docker or Postgres on the machine this was
-built on. The scaffolding (`alembic.ini`, `env.py` wired to `Base.metadata`) is in
-place; `make migrate-init` produces the migration in one command once Postgres is up.
-A hand-written 27-table migration that had never been executed would have been worse
-than an honest gap — it would drift from the models silently.
+| # | Screen | # | Screen |
+|---|---|---|---|
+| 1 | Login **& signup** | 10 | Billing detail — one-time vs recurring, pause/cancel |
+| 2 | Sales dashboard | 11 | Customer portal |
+| 3 | Quotations — **kanban + table** | 12 | Invoices list |
+| 4 | Quotation detail | 13 | Invoice detail |
+| 5 | Approvals — **risk, stage, filters** | 14 | Deal health dashboard |
+| 6 | Approval detail — **full audit trail** | 15 | Admin reporting |
+| 7 | Fulfillment & stock | 16 | Product catalog — **create** |
+| 8 | Fulfillment — **manual override** | 17 | Product detail — **variants, price lists** |
+| 9 | Subscriptions | 18 | Discount tiers & approval chains |
 
-**2. `make up` is unverified.** Same reason: no Docker locally. The Compose file and
-Dockerfile are written but have not been executed. Everything they would host *is*
-verified: the API serves the full spine under `uvicorn`, and the web client was driven
-against it in a browser.
+Plus an **Audit** screen beyond the flow: `decision_log` telemetry with per-row replay.
 
-**3. Tests run on SQLite, production is PostgreSQL.** The column types are
-dialect-portable (`app/models/base.py`): `BIGSERIAL`/`JSONB` on Postgres, `INTEGER`/
-`JSON` on SQLite. Nothing under test is dialect-specific, so the spine tests exercise
-the real code path — but the Postgres-only surface (the `decision_log` append-only
-trigger, `JSONB` operators) is not yet covered by a test that runs against Postgres.
+A few of these are worth calling out because the guard rails matter more than the
+screen:
 
-**4. Phases 4–6 are not started.** No fulfillment, billing, advisor, sentinel wiring,
-portal UI, or reporting. The portal *router tree and auth scope* exist and are enforced
-(a portal token gets 403 on every internal route), but its screens are placeholders.
+**Manual override (8).** The operator names their own split. A costlier plan is their
+call; an impossible one is not — the server re-checks coverage and stock exactly as it
+does for the optimizer, and a rejected override leaves the original reservation intact
+rather than leaking it.
+
+**Backorder consolidation (§5.2).** On stock receipt this raises a
+`CONSOLIDATE_BACKORDER` proposal on the outbox. It does not re-allocate by itself:
+moving stock and money without a human deciding is what §8's trust ladder exists to
+prevent.
+
+**Cancel is not a refund (10).** Cancelling ends the subscription at
+`next_bill_date` and emits no credit note; the customer keeps the period they paid for.
+Refunding mid-period is a proration, which is a different button. Conflating the two is
+how a cancellation silently becomes money back.
+
+**Signup (1) always creates a rep.** The role field on the request is deliberately
+ignored — otherwise anyone could mint themselves a manager and approve their own
+over-ceiling quotes. Passwords are PBKDF2 with a per-user salt.
+
+**Catalog writes refuse a loss (16/17).** A product, a variant's price delta, or a price
+list entry that would put the sale at or below unit cost is rejected.
 
 ---
 
-## Agent trust ladder
+## Three defects found and fixed after the phases shipped
+
+Each was found by using the product rather than by reading the code.
+
+**1. Deal Health was 100% false positives.** All 200 alerts sat on `PAID` deals while
+the only two live deals went unflagged — the stalled rule had no terminal-state gate, so
+every won deal re-read as "stalled for 243 days". *Stalled* now means someone still owes
+the deal an action, so `CLOSED_STATES` holds `PAID` only; `INVOICED` deliberately still
+stalls, because an unpaid invoice is still awaiting one. The gate lives in the domain,
+not in the dashboard query, so no caller can bypass it.
+
+**2. The Audit screen reported a 100% pass rate over zero verified calls.** The rate fell
+back to `100.0` whenever nothing had been judged, and every logged row was `SKIPPED`. It
+is now `null` when unmeasured, renders as "not measured", and a real rate is qualified
+with the number of calls it was computed over.
+
+**3. The tier ceiling could never bind.** §5.1 scores against
+`min(tier_ceiling_pct, category_ceiling_pct)`, but the tier term was derived as `MAX()`
+over that tier's own categories — a value that can never be smaller than the category it
+is compared against, so the tier limb was dead code and a Gold customer could take 20%
+where the flow caps them at 15%. It is now a real `tier_policy` row, and a category
+ceiling above its tier cap is rejected at the API rather than stored as data `min()`
+could never select.
+
+---
+
+## Where we deliberately went beyond the specification
+
+**§7's re-score set.** The spec names three states in which a line edit must void
+approvals and re-score. We also cover the two mid-chain `PENDING_*` states: §7's stated
+purpose is that no approval survives an edit, and a quote awaiting an approver has live
+authority that an edit invalidates. This widens the guarantee and never narrows it;
+`DRAFT` stays excluded, because a draft has no approvals to void.
+
+**§6's schema.** `tier_policy` was added because §5.1 needs two independent ceilings and
+§6 stored only one. Documented in `CLAUDE.md` §6 at the point of the claim.
+
+**§5.1's monotonicity guarantee is false as written**, under its own formulas, when
+`margin_pct` is supplied as an independent input — `margin_short` is net-weighted, so
+raising a line's discount shrinks its net and shifts weight away from it, and `c3` falls.
+Golden Case E is unaffected (its margins sit above the floor, so `c3` is 0), and the
+property does hold in the economically real regime where margin is coupled to discount.
+Both the counterexample and the holding regime are pinned as tests.
+
+---
+
+## Agent trust ladder (§8)
 
 | Tier | Agents | May write state? |
 |---|---|---|
@@ -177,18 +235,33 @@ portal UI, or reporting. The portal *router tree and auth scope* exist and are e
 | **T1** statistical | Advisor, Sentinel | proposals only; never a monetary field |
 | **T2** generative | Narrator | prose only; one nullable text column |
 
-Sentinel's output carries `tier: 1, writes_state: false` and is asserted in tests.
-Isolation Forest can supply a second vote but is never the sole reason for an alert.
+Sentinel's output carries `tier: 1, writes_state: false`. Isolation Forest can supply a
+second vote but is never the sole reason for an alert. The Narrator writes one nullable
+text column nothing reads back, and its every number is checked against the source
+record before the text is kept.
 
-## One place we deliberately went beyond the specification
+---
 
-The state machine lists three states in which a line edit must void approvals and re-score:
-`READY_TO_FULFILL`, `SENT`, `UNDER_NEGOTIATION` — the states *after* the chain
-completes. We also cover the two mid-chain states, `PENDING_MANAGER` and
-`PENDING_FINANCE`.
+## Known gaps
 
-The reason: the stated purpose is that no approval survives an edit. A quote sitting
-in `PENDING_MANAGER` has a live pending step, so editing it without re-scoring would
-let an approver sign off terms that changed under them — the same hole this exists to
-close. This **widens** the guarantee and never narrows it; `DRAFT` remains excluded,
-because a draft has no approvals to void.
+**`make up` is unverified.** There is no Docker on the machine this was built on. The
+Compose file and Dockerfile are written but have not been executed. Everything they
+would host is verified: the API serves the whole flow under `uvicorn`, and the web
+client was driven against it in a browser.
+
+**Tests run on SQLite; production is PostgreSQL.** Column types are dialect-portable
+(`BIGSERIAL`/`JSONB` on Postgres, `INTEGER`/`JSON` on SQLite), and nothing under test is
+dialect-specific — but the Postgres-only surface (the append-only `decision_log`
+trigger, `JSONB` operators) has no test running against Postgres.
+
+**Currency is presentational.** Amounts render with `en-IN` grouping; the price-list
+table carries a currency column and the seeded USD list applies a flat multiplier, but
+there is no FX rate anywhere — a USD price is a number a human typed, not a conversion.
+
+**The `decision_log` append-only trigger is PostgreSQL-only.** The migration installs
+`BEFORE UPDATE`/`BEFORE DELETE` triggers that raise; on SQLite the statement is skipped,
+so the test suite exercises the append-only *convention* but not its enforcement.
+
+**Deleting a product is not offered.** Products are referenced by historical quote
+lines, so a delete would either orphan an audit trail or cascade into one. Archiving is
+the right answer and is not built.

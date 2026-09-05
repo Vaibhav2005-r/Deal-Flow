@@ -276,6 +276,10 @@ class FulfillmentLineSnapshot(_Snap):
 
 class SentinelSnapshot(_Snap):
     quotation_id: int | None = None
+    #: The quotation's state. A closed deal cannot stall (see
+    #: app.domain.sentinel.CLOSED_STATES). Defaults to "" so a caller that
+    #: omits it gets the old, un-gated behaviour rather than a silent pass.
+    quotation_state: str = ""
     as_of: date
     last_activity_at: date
     stall_days: int = 7

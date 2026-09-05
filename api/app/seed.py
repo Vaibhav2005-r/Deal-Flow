@@ -26,12 +26,25 @@ from app import affinity
 from app.models.base import Base
 from app.models.enums import (
     ApprovalDecision,
+    InvoiceKind,
+    InvoiceStatus,
+    SubscriptionStatus,
     QuoteState,
     Role,
     Tier,
 )
 from app.models.tables import (
     ApprovalRequest,
+    ApprovalRule,
+    FulfillmentLine,
+    FulfillmentPlan,
+    Invoice,
+    InvoiceLine,
+    Payment,
+    PriceList,
+    PriceListItem,
+    ProductVariant,
+    Subscription,
     Config,
     Customer,
     DiscountPolicy,
@@ -40,12 +53,16 @@ from app.models.tables import (
     QuoteLine,
     Stock,
     SubscriptionPlan,
+    TierPolicy,
     User,
     Warehouse,
 )
 from app.settings import settings
 
 SEED = 20260905
+
+#: Fixed "today" for seeded fixtures, so idle-day counts stay reproducible.
+AS_OF = date(2026, 9, 5)
 HISTORICAL_ORDERS = 200
 
 CATEGORIES = ["Hardware", "Software", "Service", "Subscription"]
@@ -119,14 +136,27 @@ USERS: list[tuple[str, str, Role]] = [
     ("root@dealflow.example", "System Administrator", Role.ADMIN),
 ]
 
+#: tier -> the cap that tier may never exceed, whatever the category.
+#: From the product flow's "Discount tiers and approval chains" screen.
+TIER_CEILINGS: dict[Tier, str] = {
+    Tier.GOLD: "15",
+    Tier.SILVER: "10",
+    Tier.BRONZE: "5",
+}
+
 #: (tier, category) -> (ceiling_pct, floor_margin_pct).  UNIQUE(tier, category)
 #: is what lets the Governance verifier prove a ceiling was looked up, not
 #: defaulted — so every combination must exist.
+#:
+#: Every value here is <= its tier cap in TIER_CEILINGS. A category ceiling
+#: above the tier cap would be dead data: min() could never select it, so the
+#: policy screen would advertise a discount the engine refuses to allow.
+#: `test_no_category_ceiling_exceeds_its_tier_cap` enforces that.
 POLICY: dict[tuple[Tier, str], tuple[str, str]] = {}
 _CEILINGS = {
-    Tier.GOLD: {"Hardware": "15", "Software": "20", "Service": "10", "Subscription": "18"},
-    Tier.SILVER: {"Hardware": "12", "Software": "16", "Service": "8", "Subscription": "14"},
-    Tier.BRONZE: {"Hardware": "8", "Software": "12", "Service": "5", "Subscription": "10"},
+    Tier.GOLD: {"Hardware": "15", "Software": "15", "Service": "10", "Subscription": "12"},
+    Tier.SILVER: {"Hardware": "10", "Software": "10", "Service": "8", "Subscription": "9"},
+    Tier.BRONZE: {"Hardware": "5", "Software": "5", "Service": "4", "Subscription": "5"},
 }
 _FLOORS = {"Hardware": "20", "Software": "35", "Service": "20", "Subscription": "30"}
 for _tier, _cats in _CEILINGS.items():
@@ -205,6 +235,9 @@ def seed_reference(session: Session, rng: random.Random) -> dict:
             )
         )
     session.add_all(products)
+
+    for tier, ceiling in TIER_CEILINGS.items():
+        session.add(TierPolicy(tier=tier, ceiling_pct=Decimal(ceiling)))
 
     for (tier, category), (ceiling, floor) in POLICY.items():
         session.add(
@@ -352,6 +385,13 @@ def seed_demo_quote(session: Session, ref: dict) -> int:
         rep_id=rep.id,
         state=QuoteState.DRAFT,
         version=1,
+        # Set explicitly. Left to the column's server_default this is
+        # wall-clock now(), which makes `make seed` non-reproducible — and
+        # last_activity_at feeds the stalled detector, so it is not a
+        # cosmetic field.
+        last_activity_at=datetime.combine(
+            AS_OF, datetime.min.time(), tzinfo=timezone.utc
+        ),
     )
     session.add(quote)
     session.flush()
@@ -390,6 +430,11 @@ def seed_portal_demo_quote(session: Session, ref: dict) -> int:
         state=QuoteState.SENT,
         version=2,
         risk_score=Decimal("41.9"),
+        # Explicit, for the same reason as the other demo quote: the column's
+        # server_default is wall-clock now().
+        last_activity_at=datetime.combine(
+            AS_OF, datetime.min.time(), tzinfo=timezone.utc
+        ),
     )
     session.add(quote)
     session.flush()
@@ -410,6 +455,351 @@ def seed_portal_demo_quote(session: Session, ref: dict) -> int:
     return quote.id
 
 
+#: Product variants (screen 17). attribute -> values, with a price delta.
+VARIANTS: dict[str, list[tuple[str, str, str]]] = {
+    "HW-LT-14": [("Colour", "Slate", "0"), ("Colour", "Graphite", "0"),
+                 ("RAM", "16GB", "0"), ("RAM", "32GB", "18000")],
+    "HW-LT-16": [("RAM", "16GB", "0"), ("RAM", "32GB", "22000"),
+                 ("Storage", "512GB", "0"), ("Storage", "1TB", "14000")],
+    "HW-MN-27": [("Stand", "Fixed", "0"), ("Stand", "Height-adjustable", "4500")],
+    "HW-WS-01": [("GPU", "Integrated", "0"), ("GPU", "Discrete", "45000")],
+    "SB-MSP-GD": [("Term", "12 months", "0"), ("Term", "24 months", "-6000")],
+}
+
+#: Price lists (screen 17). name -> (currency, rule label, multiplier)
+PRICE_LISTS: list[tuple[str, str, str, str]] = [
+    ("Standard", "INR", "List price, no adjustment", "1.00"),
+    ("Gold Partner", "INR", "List price minus 10 percent", "0.90"),
+    ("Export (USD)", "USD", "List price minus 5 percent", "0.95"),
+]
+
+#: Approval chains by blended-score band (screen 18). Mirrors §5.1's routing
+#: thresholds — this table is what the admin screen edits.
+APPROVAL_RULES: list[tuple[str, str, list[str]]] = [
+    ("0", "20", []),
+    ("20", "50", ["SALES_MANAGER"]),
+    ("50", "100", ["SALES_MANAGER", "FINANCE"]),
+]
+
+#: Deals deliberately left idle so the Deal Health dashboard has real signal.
+#: (state, days_idle, discount_pct, sku, label)
+STALLED_FIXTURES: list[tuple[str, int, str, str, str]] = [
+    (QuoteState.SENT, 12, "6", "HW-LT-16", "sent, gone quiet"),
+    (QuoteState.UNDER_NEGOTIATION, 21, "34", "HW-WS-01", "negotiating, deep discount"),
+    # 18% against the gold/Software effective ceiling of 15% is a 3pp breach,
+    # which scores 30.0 and routes to a single SALES_MANAGER step — coherent
+    # with the pending approval row this fixture creates. A within-ceiling
+    # discount here would sit in PENDING_MANAGER having breached nothing.
+    (QuoteState.PENDING_MANAGER, 9, "18", "SW-BI-01", "waiting on an approver"),
+]
+
+
+def seed_stalled_deals(session: Session, ref: dict, as_of: date) -> list[int]:
+    """A few OPEN deals that are genuinely idle.
+
+    The stalled detector ignores closed deals (a PAID order cannot stall), so
+    without these the dashboard is correctly but uselessly empty: every
+    historical order is PAID. These give it truthful content — deals that
+    really are waiting on someone.
+    """
+    reps = [u for u in ref["users"] if u.role == Role.REP]
+    by_sku = {p.sku: p for p in ref["products"]}
+    created: list[int] = []
+
+    for idx, (state, idle_days, discount, sku, _label) in enumerate(STALLED_FIXTURES):
+        customer = ref["customers"][idx % 10]      # never the two brand-new ones
+        rep = reps[idx % len(reps)]
+        product = by_sku[sku]
+        last_active = as_of - timedelta(days=idle_days)
+
+        quote = Quotation(
+            customer_id=customer.id,
+            rep_id=rep.id,
+            state=state,
+            version=1,
+            last_activity_at=datetime.combine(
+                last_active, datetime.min.time(), tzinfo=timezone.utc
+            ),
+        )
+        session.add(quote)
+        session.flush()
+
+        ceiling, floor = POLICY[(customer.tier, product.category)]
+        net = product.list_price * (Decimal(1) - Decimal(discount) / 100)
+        margin = (net - product.unit_cost) / net * 100 if net > 0 else Decimal(0)
+        session.add(QuoteLine(
+            quotation_id=quote.id,
+            product_id=product.id,
+            qty=2,
+            unit_price=product.list_price,
+            discount_pct=Decimal(discount),
+            ceiling_pct_applied=Decimal(ceiling),
+            margin_pct=round(margin, 2),
+            is_recurring=product.is_subscription,
+        ))
+
+        if state == QuoteState.PENDING_MANAGER:
+            quote.risk_score = Decimal("30.0")
+            session.add(ApprovalRequest(
+                quotation_id=quote.id,
+                step_index=0,
+                approver_role="SALES_MANAGER",
+                decision=ApprovalDecision.PENDING,
+            ))
+
+        created.append(quote.id)
+
+    session.flush()
+    return created
+
+
+def seed_catalog_detail(session: Session, ref: dict) -> tuple[int, int]:
+    """Variants and price lists — the catalog depth screens 16/17 render."""
+    by_sku = {p.sku: p for p in ref["products"]}
+
+    variants = 0
+    for sku, rows in VARIANTS.items():
+        product = by_sku.get(sku)
+        if product is None:
+            continue
+        for attribute, value, extra in rows:
+            session.add(ProductVariant(
+                product_id=product.id, attribute=attribute,
+                value=value, extra_price=Decimal(extra),
+            ))
+            variants += 1
+
+    items = 0
+    for name, currency, _rule, multiplier in PRICE_LISTS:
+        price_list = PriceList(name=name, currency=currency)
+        session.add(price_list)
+        session.flush()
+        for product in ref["products"]:
+            session.add(PriceListItem(
+                price_list_id=price_list.id,
+                product_id=product.id,
+                price=(product.list_price * Decimal(multiplier)).quantize(Decimal("0.01")),
+            ))
+            items += 1
+
+    session.flush()
+    return variants, items
+
+
+def seed_approval_rules(session: Session) -> int:
+    for min_score, max_score, steps in APPROVAL_RULES:
+        session.add(ApprovalRule(
+            min_score=Decimal(min_score), max_score=Decimal(max_score), steps=steps
+        ))
+    session.flush()
+    return len(APPROVAL_RULES)
+
+
+def seed_operational_records(
+    session: Session, ref: dict, as_of: date
+) -> dict[str, int]:
+    """Fulfillment plans, invoices, subscriptions and payments for a slice of
+    the closed history.
+
+    Screens 7, 9, 12 and 13 are list/detail views over these tables, and
+    without rows they render correctly but empty. Built directly rather than
+    by driving the state machine, because this is bulk fixture data, not a
+    demonstration of the flow.
+    """
+    warehouses = ref["warehouses"]
+    plans = subs = invoices = payments = 0
+
+    closed = session.scalars(
+        select(Quotation)
+        .where(Quotation.state == QuoteState.PAID)
+        .order_by(Quotation.id)
+        .limit(14)
+    ).all()
+
+    for idx, quote in enumerate(closed):
+        lines = session.scalars(
+            select(QuoteLine).where(QuoteLine.quotation_id == quote.id)
+        ).all()
+        if not lines:
+            continue
+
+        # --- fulfillment: alternate single-site and split shipments --------
+        shippable = [ln for ln in lines if not ln.is_recurring]
+        if shippable:
+            split = idx % 3 == 0 and len(shippable) > 1
+            used = warehouses[:2] if split else warehouses[:1]
+            unit_cost = sum((w.unit_ship_cost for w in used), Decimal(0)) / len(used)
+            qty_total = sum(ln.qty for ln in shippable)
+            plan = FulfillmentPlan(
+                quotation_id=quote.id,
+                total_cost=(
+                    Decimal(len(used)) * Decimal("150.00")
+                    + Decimal(qty_total) * unit_cost
+                ),
+                shipment_count=len(used),
+            )
+            session.add(plan)
+            session.flush()
+            plans += 1
+            for i, ln in enumerate(shippable):
+                backorder = idx % 7 == 0 and i == len(shippable) - 1
+                session.add(FulfillmentLine(
+                    plan_id=plan.id,
+                    product_id=ln.product_id,
+                    warehouse_id=None if backorder else used[i % len(used)].id,
+                    qty=ln.qty,
+                    is_backorder=backorder,
+                ))
+
+        # --- billing -------------------------------------------------------
+        one_time = [ln for ln in lines if not ln.is_recurring]
+        recurring = [ln for ln in lines if ln.is_recurring]
+
+        def total_of(rows: list) -> Decimal:
+            return sum(
+                (
+                    (r.unit_price * Decimal(r.qty)
+                     * (Decimal(1) - r.discount_pct / Decimal(100)))
+                    for r in rows
+                ),
+                Decimal(0),
+            ).quantize(Decimal("0.01"))
+
+        issued_on = as_of - timedelta(days=30 + idx * 3)
+        subscription = None
+        if recurring:
+            subscription = Subscription(
+                quotation_id=quote.id,
+                plan_id=ref["plans"][0].id,
+                start_date=issued_on,
+                next_bill_date=issued_on + timedelta(days=30),
+                status=SubscriptionStatus.ACTIVE
+                if idx % 5 else SubscriptionStatus.PAUSED,
+            )
+            session.add(subscription)
+            session.flush()
+            subs += 1
+
+        for kind, rows, sub in (
+            (InvoiceKind.ONE_TIME, one_time, None),
+            (InvoiceKind.RECURRING, recurring, subscription),
+        ):
+            if not rows:
+                continue
+            # leave roughly a third outstanding so the Unpaid filter has rows
+            paid = idx % 3 != 0
+            invoice = Invoice(
+                quotation_id=quote.id,
+                subscription_id=sub.id if sub else None,
+                period_key=issued_on.strftime("%Y-%m") if sub else None,
+                kind=kind,
+                total=total_of(rows),
+                status=InvoiceStatus.PAID if paid else InvoiceStatus.ISSUED,
+            )
+            session.add(invoice)
+            session.flush()
+            invoices += 1
+            for r in rows:
+                product = session.get(Product, r.product_id)
+                amount = (
+                    r.unit_price * Decimal(r.qty)
+                    * (Decimal(1) - r.discount_pct / Decimal(100))
+                ).quantize(Decimal("0.01"))
+                session.add(InvoiceLine(
+                    invoice_id=invoice.id,
+                    description=product.name if product else f"line {r.id}",
+                    qty=r.qty, unit_price=r.unit_price, amount=amount,
+                ))
+            if paid:
+                session.add(Payment(
+                    invoice_id=invoice.id,
+                    amount=invoice.total,
+                    method="bank_transfer" if idx % 2 else "card",
+                    paid_at=datetime.combine(
+                        issued_on + timedelta(days=5), datetime.min.time(),
+                        tzinfo=timezone.utc,
+                    ),
+                ))
+                payments += 1
+
+    session.flush()
+    return {
+        "fulfillment_plans": plans, "subscriptions": subs,
+        "invoices": invoices, "payments": payments,
+    }
+
+
+def seed_pending_fulfillment(session: Session, ref: dict, as_of: date) -> int:
+    """A couple of confirmed orders still awaiting fulfillment, so screen 7's
+    "Orders Pending Fulfillment" list is not empty.
+
+    Given recent activity on purpose: these are live deals, and leaving them
+    idle would add noise to the Deal Health story rather than signal.
+    """
+    reps = [u for u in ref["users"] if u.role == Role.REP]
+    by_sku = {p.sku: p for p in ref["products"]}
+    created = 0
+
+    for idx, (sku, qty) in enumerate((("HW-MN-32", 4), ("HW-RT-48", 2))):
+        customer = ref["customers"][idx + 3]
+        product = by_sku[sku]
+        quote = Quotation(
+            customer_id=customer.id,
+            rep_id=reps[idx % len(reps)].id,
+            state=QuoteState.CONFIRMED if idx == 0 else QuoteState.FULFILLING,
+            version=3,
+            risk_score=Decimal("0.0"),
+            last_activity_at=datetime.combine(
+                as_of - timedelta(days=idx + 1), datetime.min.time(),
+                tzinfo=timezone.utc,
+            ),
+        )
+        session.add(quote)
+        session.flush()
+        ceiling, _floor = POLICY[(customer.tier, product.category)]
+        net = product.list_price * (Decimal(1) - Decimal("4") / 100)
+        session.add(QuoteLine(
+            quotation_id=quote.id, product_id=product.id, qty=qty,
+            unit_price=product.list_price, discount_pct=Decimal("4"),
+            ceiling_pct_applied=Decimal(ceiling),
+            margin_pct=round((net - product.unit_cost) / net * 100, 2),
+            is_recurring=product.is_subscription,
+        ))
+
+        # The FULFILLING order has an allocated plan and therefore RESERVED
+        # stock. `services.fulfillment.plan_fulfillment` reserves rather than
+        # decrementing on-hand — the goods have not shipped yet — so seeded
+        # plans must do the same, or the stock screen shows plans that
+        # reserved nothing. The CONFIRMED order is deliberately left unplanned
+        # so both sides of that distinction are visible.
+        if quote.state == QuoteState.FULFILLING:
+            warehouse = ref["warehouses"][0]
+            plan = FulfillmentPlan(
+                quotation_id=quote.id,
+                total_cost=Decimal("150.00") + Decimal(qty) * warehouse.unit_ship_cost,
+                shipment_count=1,
+            )
+            session.add(plan)
+            session.flush()
+            session.add(FulfillmentLine(
+                plan_id=plan.id, product_id=product.id,
+                warehouse_id=warehouse.id, qty=qty, is_backorder=False,
+            ))
+            stock = session.scalar(
+                select(Stock).where(
+                    Stock.warehouse_id == warehouse.id,
+                    Stock.product_id == product.id,
+                )
+            )
+            if stock is not None:
+                stock.qty_reserved += qty
+
+        created += 1
+
+    session.flush()
+    return created
+
+
 def run(database_url: str | None = None, echo: bool = False) -> dict:
     """Drop and rebuild. Idempotent by construction."""
     url = database_url or settings.database_url
@@ -425,6 +815,11 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
         orders = seed_history(session, ref, rng)
         demo_quote_id = seed_demo_quote(session, ref)
         portal_demo_quote_id = seed_portal_demo_quote(session, ref)
+        stalled_ids = seed_stalled_deals(session, ref, AS_OF)
+        variants, price_items = seed_catalog_detail(session, ref)
+        rules = seed_approval_rules(session)
+        pending = seed_pending_fulfillment(session, ref, AS_OF)
+        ops = seed_operational_records(session, ref, AS_OF)
         # FP-Growth runs HERE, at seed time, never in a request handler (§13)
         affinity_rules = affinity.compute(session)
         session.commit()
@@ -434,11 +829,18 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
             "customers": len(ref["customers"]),
             "warehouses": len(ref["warehouses"]),
             "users": session.scalar(select(func.count()).select_from(User)),
+            "tier_policies": len(TIER_CEILINGS),
             "discount_policies": len(POLICY),
             "historical_orders": orders,
             "affinity_rules": affinity_rules,
             "demo_quote_id": demo_quote_id,
             "portal_demo_quote_id": portal_demo_quote_id,
+            "stalled_demo_deals": len(stalled_ids),
+            "product_variants": variants,
+            "price_list_items": price_items,
+            "approval_rules": rules,
+            "pending_fulfillment": pending,
+            **ops,
         }
     return summary
 

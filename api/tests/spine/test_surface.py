@@ -190,3 +190,65 @@ def test_narrator_generates_prose_and_passes_verifier(client, rep):
     # Verify narrative was stored on quote
     q_res = client.get(f"/api/quotes/{quote['id']}", headers=auth(rep["token"])).json()
     # Narrative was persisted to quotation table
+
+
+# --------------------------------------------------------------------------
+# the reliability panel must not flatter itself
+# --------------------------------------------------------------------------
+
+
+def test_pass_rate_is_null_when_nothing_has_been_verified(client, manager):
+    """REGRESSION. `pass_rate` used to fall back to 100.0 when zero calls had
+    been judged, so a panel whose every row was SKIPPED displayed a green
+    "100.0% Verifier Pass Rate". On a project whose thesis is the audit trail,
+    that is the one number that must never overstate."""
+    stats = client.get("/api/reliability/stats", headers=auth(manager["token"])).json()
+
+    if stats["verified_calls"] == 0:
+        assert stats["pass_rate_pct"] is None, (
+            "no verifier ran — the rate must read as unmeasured, not as 100%"
+        )
+    else:
+        assert 0.0 <= stats["pass_rate_pct"] <= 100.0
+
+
+def test_stats_separate_verified_from_skipped(client, manager):
+    stats = client.get("/api/reliability/stats", headers=auth(manager["token"])).json()
+    verdicts = stats["verifier_verdicts"]
+    assert stats["verified_calls"] == verdicts.get("PASS", 0) + verdicts.get("FAIL", 0)
+    assert stats["skipped_calls"] == verdicts.get("SKIPPED", 0)
+    assert (
+        stats["verified_calls"] + stats["skipped_calls"] == stats["total_invocations"]
+    )
+
+
+def test_a_real_pass_rate_appears_once_a_verified_agent_runs(client, rep, manager):
+    """Governance runs with a verifier, so confirming a quote produces a
+    genuinely measured rate."""
+    from tests.spine.test_spine import _gold_customer, _product
+
+    token = rep["token"]
+    customer = _gold_customer(client, token)
+    laptop = _product(client, token, "HW-LT-14")
+    quote = client.post("/api/quotes", headers=auth(token), json={
+        "customer_id": customer["id"],
+        "lines": [{"product_id": laptop["id"], "qty": 1, "discount_pct": "5"}],
+    }).json()
+    client.post(f"/api/quotes/{quote['id']}/confirm", headers=auth(token))
+
+    stats = client.get("/api/reliability/stats", headers=auth(manager["token"])).json()
+    assert stats["verified_calls"] >= 1
+    assert stats["pass_rate_pct"] is not None
+    assert stats["pass_rate_pct"] == 100.0, "governance verifier should pass"
+
+
+def test_deal_health_does_not_flag_closed_deals(client, manager):
+    """REGRESSION. Every seeded PAID order used to alert as "stalled", making
+    the dashboard 100% false positives."""
+    rows = client.get("/api/deal-health", headers=auth(manager["token"])).json()
+    paid = [r for r in rows if r["state"] == "PAID"]
+    assert paid, "fixture should contain closed deals"
+    assert all(r["stalled"] is False for r in paid), (
+        "a PAID deal is complete — it cannot be stalled"
+    )
+    assert all(r["alert"] is False for r in paid if not r["discount_anomaly"])

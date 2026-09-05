@@ -1,4 +1,4 @@
-"""Login and Registration.  Issues a scope-separated bearer token (§1 constraint 2)."""
+"""Login, Signup and Registration.  Issues a scope-separated bearer token (§1 constraint 2)."""
 
 from __future__ import annotations
 
@@ -7,12 +7,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_session
-from app.api.schemas import LoginRequest, RegisterRequest, TokenResponse
+from app.api.schemas import LoginRequest, RegisterRequest, SignupRequest, TokenResponse
 from app.api.security import hash_password, issue_token, verify_password
 from app.models.enums import Role
 from app.models.tables import User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+#: Self-service signup only ever creates a rep (see SignupRequest).
+SELF_SERVICE_ROLE = Role.REP
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -33,6 +36,38 @@ def login(body: LoginRequest, session: Session = Depends(get_session)) -> TokenR
     )
 
 
+@router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+def signup(body: SignupRequest, session: Session = Depends(get_session)) -> TokenResponse:
+    """Create an internal account and sign in.
+
+    The requested role is deliberately ignored: an account created at a public
+    form is always a rep. Approver roles are granted by an admin, or anyone
+    could mint themselves a manager and approve their own over-ceiling quotes.
+    """
+    email = body.email.strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="a valid email is required")
+    if session.scalar(select(User).where(func.lower(User.email) == email)):
+        raise HTTPException(status_code=409, detail="that email is already registered")
+
+    user = User(
+        email=email,
+        full_name=body.full_name.strip(),
+        role=SELF_SERVICE_ROLE,
+        password_hash=hash_password(body.password),
+    )
+    session.add(user)
+    session.flush()
+
+    return TokenResponse(
+        token=issue_token(user.id, "internal", str(user.role)),
+        scope="internal",
+        role=str(user.role),
+        user_id=user.id,
+        full_name=user.full_name,
+    )
+
+
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, session: Session = Depends(get_session)) -> TokenResponse:
     clean_email = body.email.strip().lower()
@@ -45,6 +80,10 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     if existing is not None:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
 
+    name = (body.full_name or "").strip()
+    if not name:
+        name = clean_email.split("@")[0].replace(".", " ").title()
+
     role_str = (body.role or "rep").strip().lower()
     try:
         role_enum = Role(role_str)
@@ -53,10 +92,6 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
 
     if role_enum not in {Role.REP, Role.MANAGER, Role.FINANCE, Role.ADMIN}:
         role_enum = Role.REP
-
-    name = (body.full_name or "").strip()
-    if not name:
-        name = clean_email.split("@")[0].replace(".", " ").title()
 
     user = User(
         email=clean_email,
@@ -67,12 +102,10 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     session.add(user)
     session.flush()
 
-    scope = "internal"
     return TokenResponse(
-        token=issue_token(user.id, scope, str(user.role)),
-        scope=scope,
+        token=issue_token(user.id, "internal", str(user.role)),
+        scope="internal",
         role=str(user.role),
         user_id=user.id,
         full_name=user.full_name,
     )
-

@@ -4,6 +4,12 @@ import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { clearToken, hasScope } from "@/lib/auth";
 import Approvals from "./Approvals";
+import Catalog from "./Catalog";
+import Dashboard from "./Dashboard";
+import DiscountConfig from "./DiscountConfig";
+import FulfillmentList from "./FulfillmentList";
+import Invoices from "./Invoices";
+import Subscriptions from "./Subscriptions";
 import HealthDashboard from "./HealthDashboard";
 import Login from "./Login";
 import Pipeline from "./Pipeline";
@@ -41,13 +47,22 @@ export default function InternalRouter() {
           <div className="flex items-center gap-5">
             <DealFlowLogo size={24} />
             <nav className="flex gap-1 overflow-x-auto py-0.5">
-              <NavLink to="/" end className={tab}>Build</NavLink>
-              <NavLink to="/quotes" className={tab}>Quotes</NavLink>
+              {/* Order mirrors the product flow: home, sell, approve, fulfil,
+                  bill, then the analysis and admin surfaces. */}
+              <NavLink to="/" end className={tab}>Home</NavLink>
+              <NavLink to="/build" className={tab}>Build</NavLink>
+              <NavLink to="/quotes" className={tab}>Quotations</NavLink>
               <NavLink to="/approvals" className={tab}>Approvals</NavLink>
-              <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>
+              <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>
+              <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>
+              <NavLink to="/invoices" className={tab}>Invoices</NavLink>
               <NavLink to="/health" className={tab}>Deal Health</NavLink>
               <NavLink to="/reports" className={tab}>Reports</NavLink>
-              <NavLink to="/reliability" className={tab}>Reliability</NavLink>
+              <NavLink to="/catalog" className={tab}>Products</NavLink>
+              <span className="w-px h-5 bg-slate-200 mx-1 self-center" />
+              <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>
+              <NavLink to="/discount-config" className={tab}>Config</NavLink>
+              <NavLink to="/reliability" className={tab}>Audit</NavLink>
             </nav>
           </div>
 
@@ -67,11 +82,17 @@ export default function InternalRouter() {
 
       <main className="max-w-7xl mx-auto px-6 py-6">
         <Routes>
-          <Route index element={<QuoteBuilder />} />
+          <Route index element={<Dashboard />} />
+          <Route path="build" element={<QuoteBuilder />} />
           <Route path="quotes" element={<QuoteList />} />
           <Route path="quotes/:id" element={<QuoteBuilder />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="pipeline" element={<Pipeline />} />
+          <Route path="fulfillment" element={<FulfillmentList />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
+          <Route path="invoices" element={<Invoices />} />
+          <Route path="catalog" element={<Catalog />} />
+          <Route path="discount-config" element={<DiscountConfig />} />
           <Route path="health" element={<HealthDashboard />} />
           <Route path="reports" element={<Reports />} />
           <Route path="reliability" element={<ReliabilityPanel />} />

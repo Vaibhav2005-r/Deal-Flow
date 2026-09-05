@@ -271,4 +271,10 @@ def test_ceilings_were_resolved_from_policy_not_defaulted(client, rep, session):
         select(DecisionLog).where(DecisionLog.quotation_id == quote["id"])
     ).one()
     for line in row.input_json["lines"]:
-        assert line["ceiling_source"].startswith("discount_policy:gold/")
+        source = line["ceiling_source"]
+        # BOTH ceilings in min(tier, category) must name a real row. The tier
+        # half used to be derived as a max() over the category rows, so it
+        # could never bind — recording its provenance is what makes that
+        # visible in the audit trail.
+        assert "tier_policy:gold" in source, source
+        assert "discount_policy:gold/" in source, source
