@@ -33,6 +33,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -68,6 +69,14 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const handleSelectRole = (role: "rep" | "manager" | "finance") => {
     setSelectedRole(role);
     setError(null);
+    setSuccessMessage(null);
+    setToastMessage(null);
+  };
+
+  const handleTabChange = (tab: "signin" | "create") => {
+    setActiveTab(tab);
+    setError(null);
+    setSuccessMessage(null);
     setToastMessage(null);
   };
 
@@ -91,9 +100,10 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           role: selectedRole,
         });
 
+        // Account created successfully -> Switch to signin tab with clear prompt to sign in
         setActiveTab("signin");
         setPassword("");
-        setToastMessage("Account created successfully! Please sign in with your credentials.");
+        setSuccessMessage("Account created successfully! Please sign in with your password to continue.");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create account. Please check your details.");
       } finally {
@@ -230,12 +240,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             <motion.div variants={itemVariants} className="border-b border-slate-200 flex mb-4 relative">
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("signin");
-                  setError(null);
-                  setToastMessage(null);
-                }}
-                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 ${
+                onClick={() => handleTabChange("signin")}
+                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 cursor-pointer ${
                   activeTab === "signin" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -250,12 +256,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("create");
-                  setError(null);
-                  setToastMessage(null);
-                }}
-                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 ${
+                onClick={() => handleTabChange("create")}
+                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 cursor-pointer ${
                   activeTab === "create" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -298,6 +300,25 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
             {/* Feedback & Error Message Banners with Shake Animation */}
             <AnimatePresence>
+              {successMessage && (
+                <motion.div
+                  key="success-banner"
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                  transition={{ duration: 0.35 }}
+                  className="mb-3.5 p-3 bg-emerald-50 border border-emerald-200/90 rounded-xl text-xs text-emerald-800 flex items-start gap-2.5 shadow-xs"
+                >
+                  <svg className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <div>
+                    <p className="font-bold text-emerald-900">Account created successfully!</p>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">{successMessage}</p>
+                  </div>
+                </motion.div>
+              )}
+
               {error && (
                 <motion.div
                   key="error-banner"
