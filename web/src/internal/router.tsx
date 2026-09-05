@@ -1,8 +1,8 @@
 /** Internal router tree — Role-based navigation for Finance, Rep, Manager, Admin */
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { clearToken, getCurrentUser, getInternalRole, hasScope, isFinanceUser } from "@/lib/auth";
+import { clearToken, getCurrentUser, getInternalRole, getRoleDesignation, hasScope, isFinanceUser } from "@/lib/auth";
 import Approvals from "./Approvals";
 import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
@@ -32,12 +32,39 @@ const tab = ({ isActive }: { isActive: boolean }) =>
 export default function InternalRouter() {
   const [authed, setAuthed] = useState(hasScope("internal"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   if (!authed) return <Login onLogin={() => setAuthed(true)} />;
 
   const user = getCurrentUser();
   const roleName = getInternalRole();
   const isFinance = isFinanceUser();
+  const designation = getRoleDesignation(roleName);
+  const userEmail =
+    user?.email ||
+    (roleName === "finance"
+      ? "aisha.karim@dealflow.example"
+      : user?.full_name
+      ? `${user.full_name.toLowerCase().replace(/\s+/g, ".")}@dealflow.example`
+      : "user@dealflow360.local");
+
+  const initials = (user?.full_name ?? "User")
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   const getRoleBadgeStyle = (r: string) => {
     switch (r) {
@@ -168,20 +195,133 @@ export default function InternalRouter() {
             </NavLink>
           </nav>
 
-          {/* Right: User Profile & Actions */}
+          {/* Right: Interactive User Profile & Actions */}
           <div className="flex items-center gap-2.5 shrink-0 z-10">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-semibold text-slate-800" data-testid="whoami">
-                {user?.full_name ?? "User"}
-              </span>
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(
-                  roleName
-                )}`}
+            {/* Clickable User Badge */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-lg cursor-pointer transition-all shadow-2xs group"
+                title="Click to view logged in email and designation"
               >
-                {roleName}
-              </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-semibold text-slate-800 group-hover:text-slate-900" data-testid="whoami">
+                  {user?.full_name ?? "User"}
+                </span>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(
+                    roleName
+                  )}`}
+                >
+                  {roleName}
+                </span>
+                <svg
+                  className={`w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
+                    userMenuOpen ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* User Info Popover Modal / Dropdown Card */}
+              {userMenuOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {/* Top Profile Header */}
+                  <div className="flex items-start gap-3 pb-3 border-b border-slate-100">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#1d72f2] to-blue-600 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
+                      {initials}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <h3 className="text-xs font-bold text-slate-900 truncate">
+                          {user?.full_name ?? "User"}
+                        </h3>
+                        <span
+                          className={`text-[9px] font-bold uppercase px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(
+                            roleName
+                          )}`}
+                        >
+                          {roleName}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-semibold text-[#1d72f2] mt-0.5 truncate">
+                        {designation}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Account Details List */}
+                  <div className="py-3 space-y-2.5 text-xs">
+                    {/* Logged in Email */}
+                    <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
+                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-slate-400 block font-medium">Logged in Email</span>
+                        <span className="font-bold text-slate-800 text-[11px] truncate block">
+                          {userEmail}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Official Designation */}
+                    <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
+                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-slate-400 block font-medium">Designation / Role</span>
+                        <span className="font-bold text-slate-800 text-[11px] truncate block">
+                          {designation}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Workspace & Session Status */}
+                    <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
+                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-emerald-600 shrink-0">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] text-slate-400 block font-medium">Session Status</span>
+                        <span className="font-bold text-emerald-700 text-[11px] flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Active & Verified Session
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearToken("internal");
+                        setAuthed(false);
+                      }}
+                      className="w-full py-2 px-3 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <button
@@ -218,7 +358,10 @@ export default function InternalRouter() {
         {mobileNavOpen && (
           <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-lg space-y-1">
             <div className="sm:hidden flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-              <span className="text-xs font-semibold text-slate-800">{user?.full_name ?? "User"}</span>
+              <div>
+                <span className="text-xs font-semibold text-slate-800 block">{user?.full_name ?? "User"}</span>
+                <span className="text-[10px] text-slate-500 block">{userEmail}</span>
+              </div>
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(
                   roleName

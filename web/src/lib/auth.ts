@@ -78,6 +78,7 @@ export function getCurrentUser(): InternalUserInfo | null {
             user_id: decoded.uid,
             role: decoded.role,
             scope: decoded.scope,
+            email: decoded.email,
             full_name:
               decoded.full_name ||
               (String(decoded.role).toLowerCase().includes("finance")
@@ -90,6 +91,15 @@ export function getCurrentUser(): InternalUserInfo | null {
   }
 
   return null;
+}
+
+export function getRoleDesignation(role: string): string {
+  const r = (role || "").toLowerCase();
+  if (r.includes("finance")) return "Senior Finance & Operations Controller";
+  if (r.includes("manager")) return "Commercial Sales Manager";
+  if (r.includes("rep")) return "Senior Account Executive";
+  if (r.includes("admin")) return "System Administrator";
+  return "Enterprise Revenue Specialist";
 }
 
 export function getInternalRole(): string {

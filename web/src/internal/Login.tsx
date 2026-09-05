@@ -121,6 +121,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         role: string;
         full_name: string;
         user_id: number;
+        email?: string;
       }>("/api/auth/login", { email: email.trim(), password });
 
       setToken("internal", res.token);
@@ -128,6 +129,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         "df360.internal.user",
         JSON.stringify({
           ...res,
+          email: email.trim(),
           role: res.role || selectedRole,
         })
       );
