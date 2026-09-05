@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
 import { api, type InvoiceDetailOut, type InvoiceRow, type InvoiceSummary } from "@/lib/api";
 import {
-  EmptyRow, ErrorBanner, FilterTabs, PageHeader, Pagination, StatCard, money,
+  EmptyRow,
+  ErrorBanner,
+  FilterTabs,
+  PageHeader,
+  Pagination,
+  StatCard,
+  money,
 } from "./components";
 
 const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "unpaid", label: "Unpaid" },
+  { key: "all", label: "All Invoices" },
+  { key: "unpaid", label: "Unpaid / Pending" },
   { key: "paid", label: "Paid" },
 ];
 
-/** Screens 12 & 13 — Invoices list, and the detail view a row opens. */
 export default function Invoices() {
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [filter, setFilter] = useState("all");
@@ -63,20 +68,30 @@ export default function Invoices() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Invoices"
-        subtitle="Every invoice generated from one-time and recurring orders."
+        title="Invoices & Billing"
+        subtitle="Manage recognized customer billing, payment schedules, and outstanding balances."
         actions={
           <div className="flex flex-wrap items-center gap-3">
-            <input
-              type="search"
-              placeholder="Search reference or customer..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="border border-slate-200 rounded px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 w-56"
-            />
+            <div className="relative">
+              <input
+                type="search"
+                placeholder="Search reference or customer..."
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#1d72f2] w-64 shadow-2xs"
+              />
+              <svg
+                className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
             <FilterTabs
               options={FILTERS}
               value={filter}
@@ -88,91 +103,118 @@ export default function Invoices() {
           </div>
         }
       />
+
       <ErrorBanner error={error} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Financial Summary KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
-          label="Total invoices"
+          label="Total Invoices"
           value={summary?.total_invoices ?? totalCount}
-          hint={filter !== "all" ? `${filter} only` : "in database"}
+          hint={filter !== "all" ? `${filter} filter` : "in database"}
         />
         <StatCard
-          label="Total billed"
-          value={money(summary?.total_billed ?? "0")}
-          hint="database total"
+          label="Total Billed"
+          value={`$${money(summary?.total_billed ?? "0")}`}
+          hint="Gross ledger billed"
         />
         <StatCard
-          label="Total paid"
-          value={money(summary?.total_paid ?? "0")}
+          label="Total Paid"
+          value={`$${money(summary?.total_paid ?? "0")}`}
           tone="emerald"
-          hint={`${summary?.paid_invoices ?? 0} invoices`}
+          hint={`${summary?.paid_invoices ?? 0} invoices settled`}
         />
         <StatCard
-          label="Total outstanding"
-          value={money(summary?.total_outstanding ?? "0")}
-          tone={(Number(summary?.total_outstanding ?? 0)) > 0 ? "amber" : "emerald"}
-          hint={`${summary?.unpaid_invoices ?? 0} unpaid`}
+          label="Total Outstanding"
+          value={`$${money(summary?.total_outstanding ?? "0")}`}
+          tone={Number(summary?.total_outstanding ?? 0) > 0 ? "amber" : "emerald"}
+          hint={`${summary?.unpaid_invoices ?? 0} invoices pending`}
         />
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Invoice #</th>
-              <th className="px-4 py-2 font-medium">Customer</th>
-              <th className="px-4 py-2 font-medium">Kind</th>
-              <th className="px-4 py-2 font-medium text-right">Amount</th>
-              <th className="px-4 py-2 font-medium text-right">Outstanding</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
+      {/* Main Invoices Table */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
-                  Loading invoices from database...
-                </td>
+                <th className="px-4 py-3">Invoice Ref</th>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Billing Type</th>
+                <th className="px-4 py-3 text-right">Total Amount</th>
+                <th className="px-4 py-3 text-right">Outstanding</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
-            ) : rows.length === 0 ? (
-              <EmptyRow colSpan={7} text="No invoices match this filter." />
-            ) : (
-              rows.map((r) => (
-                <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-2 font-medium">{r.reference}</td>
-                  <td className="px-4 py-2">
-                    {r.customer_name}
-                    <span className="block text-xs text-slate-400">quote #{r.quotation_id}</span>
-                  </td>
-                  <td className="px-4 py-2 text-slate-600">
-                    {r.kind.replace("_", " ")}
-                    {r.period_key && <span className="text-slate-400"> · {r.period_key}</span>}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{money(r.total)}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${
-                    Number(r.outstanding) > 0 ? "text-amber-700 font-medium" : "text-slate-400"}`}>
-                    {money(r.outstanding)}
-                  </td>
-                  <td className="px-4 py-2">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                      r.status === "paid" ? "bg-emerald-100 text-emerald-800"
-                      : "bg-amber-100 text-amber-800"}`}>
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <button onClick={() => open(r.id)}
-                      data-testid={`open-invoice-${r.id}`}
-                      className="text-xs text-slate-600 border border-slate-200 rounded px-2 py-1 hover:bg-white">
-                      Open
-                    </button>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-sans">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                    <div className="flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-[#1d72f2] animate-ping" />
+                      <span>Loading invoices from database...</span>
+                    </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : rows.length === 0 ? (
+                <EmptyRow colSpan={7} text="No invoices match this filter." />
+              ) : (
+                rows.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-4 py-3 font-bold text-slate-900">
+                      <span className="text-[#1d72f2]">{r.reference}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-semibold text-slate-900 block">{r.customer_name}</span>
+                      <span className="text-[11px] text-slate-400">Quote #{r.quotation_id}</span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <span className="capitalize">{r.kind.replace("_", " ")}</span>
+                      {r.period_key && <span className="text-slate-400"> · {r.period_key}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">
+                      ${money(r.total)}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums font-semibold ${
+                        Number(r.outstanding) > 0 ? "text-amber-700" : "text-slate-400"
+                      }`}
+                    >
+                      ${money(r.outstanding)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                          r.status === "paid"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            r.status === "paid" ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
+                        />
+                        <span className="capitalize">{r.status}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => open(r.id)}
+                        data-testid={`open-invoice-${r.id}`}
+                        className="text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-md px-3 py-1 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        Inspect
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <Pagination
@@ -188,88 +230,146 @@ export default function Invoices() {
         pageSizeOptions={[10, 20, 50, 100]}
       />
 
+      {/* Invoice Detail Drawer */}
       {selected && <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
 
-/** Screen 13 — Invoice Detail. */
 function InvoiceDetail({
-  invoice, onClose,
+  invoice,
+  onClose,
 }: {
   invoice: InvoiceDetailOut;
   onClose: () => void;
 }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-lg p-5" data-testid="invoice-detail">
-      <div className="flex items-start justify-between mb-4">
+    <section
+      className="bg-white border border-slate-200/90 rounded-xl p-6 shadow-md space-y-5"
+      data-testid="invoice-detail"
+    >
+      <div className="flex items-start justify-between pb-3 border-b border-slate-100">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">
-            {invoice.reference} · {invoice.customer_name}
-          </h3>
-          <p className="text-xs text-slate-500">
-            {invoice.kind.replace("_", " ")} · from quote #{invoice.quotation_id}
-            {invoice.issued_at && ` · issued ${invoice.issued_at}`}
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-slate-900">
+              {invoice.reference} — {invoice.customer_name}
+            </h2>
+            <span className="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 uppercase">
+              {invoice.kind.replace("_", " ")}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            Generated from Quotation #{invoice.quotation_id}
+            {invoice.issued_at && ` · Issued on ${invoice.issued_at}`}
           </p>
         </div>
-        <button onClick={onClose} className="text-sm text-slate-400 hover:text-slate-700">
-          Close
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md px-3 py-1 transition-colors cursor-pointer"
+        >
+          Close Detail
         </button>
       </div>
 
-      {/* Order Confirmed -> Shipped -> Invoiced -> Paid */}
-      <ol className="flex items-center gap-2 mb-5">
-        {invoice.tracker.map((t, i) => (
-          <li key={t.step} className="flex items-center gap-2">
-            <span className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-              t.done ? "bg-emerald-100 text-emerald-800 font-medium" : "bg-slate-100 text-slate-400"}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${t.done ? "bg-emerald-600" : "bg-slate-300"}`} />
-              {t.step}
-            </span>
-            {i < invoice.tracker.length - 1 && <span className="text-slate-300">→</span>}
-          </li>
-        ))}
-      </ol>
-
-      <table className="w-full text-sm mb-4">
-        <thead>
-          <tr className="text-left text-slate-500 border-b border-slate-200">
-            <th className="py-2 font-medium">Description</th>
-            <th className="py-2 font-medium text-right">Qty</th>
-            <th className="py-2 font-medium text-right">Unit</th>
-            <th className="py-2 font-medium text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoice.lines.map((ln, i) => (
-            <tr key={i} className="border-b border-slate-100">
-              <td className="py-2">{ln.description}</td>
-              <td className="py-2 text-right">{ln.qty}</td>
-              <td className="py-2 text-right tabular-nums">{money(ln.unit_price)}</td>
-              <td className="py-2 text-right tabular-nums">{money(ln.amount)}</td>
-            </tr>
+      {/* Order -> Shipped -> Invoiced -> Paid Milestone Tracker */}
+      <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">
+          Order Lifecycle Status
+        </p>
+        <ol className="flex flex-wrap items-center gap-3">
+          {invoice.tracker.map((t, i) => (
+            <li key={t.step} className="flex items-center gap-2.5">
+              <span
+                className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full font-semibold border ${
+                  t.done
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 shadow-2xs"
+                    : "bg-white text-slate-400 border-slate-200"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${t.done ? "bg-emerald-500" : "bg-slate-300"}`}
+                />
+                {t.step}
+              </span>
+              {i < invoice.tracker.length - 1 && (
+                <span className="text-slate-300 font-bold">→</span>
+              )}
+            </li>
           ))}
-        </tbody>
-      </table>
+        </ol>
+      </div>
 
-      {invoice.credit_notes.map((c, i) => (
-        <p key={i} className="text-sm text-amber-700">
-          Credit note −{money(c.amount)} · {c.reason}
-        </p>
-      ))}
-      {invoice.payments.map((p, i) => (
-        <p key={i} className="text-sm text-emerald-700">
-          Payment {money(p.amount)} · {p.method} · {p.paid_at}
-        </p>
-      ))}
+      {/* Invoice Line Breakdown */}
+      <div>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+          Line Item Breakdown
+        </h3>
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full text-xs text-left">
+            <thead className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+              <tr>
+                <th className="py-2.5 px-3">Description</th>
+                <th className="py-2.5 px-3 text-right">Quantity</th>
+                <th className="py-2.5 px-3 text-right">Unit Price</th>
+                <th className="py-2.5 px-3 text-right">Total Net</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {invoice.lines.map((ln, i) => (
+                <tr key={i} className="hover:bg-slate-50/70">
+                  <td className="py-2.5 px-3 font-semibold text-slate-800">{ln.description}</td>
+                  <td className="py-2.5 px-3 text-right font-medium text-slate-700">{ln.qty}</td>
+                  <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">
+                    ${money(ln.unit_price)}
+                  </td>
+                  <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
+                    ${money(ln.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
-      <div className="flex justify-end gap-6 border-t border-slate-100 mt-4 pt-3 text-sm">
-        <span className="text-slate-500">Billed <strong className="text-slate-900">{money(invoice.total)}</strong></span>
-        <span className="text-slate-500">Paid <strong className="text-slate-900">{money(invoice.paid)}</strong></span>
+      {/* Credit notes & payment logs if present */}
+      {invoice.credit_notes.length > 0 && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
+          {invoice.credit_notes.map((c, i) => (
+            <p key={i} className="font-medium">
+              Credit Note: −${money(c.amount)} · Reason: {c.reason}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {invoice.payments.length > 0 && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
+          {invoice.payments.map((p, i) => (
+            <p key={i} className="font-medium">
+              Payment Confirmed: ${money(p.amount)} via {p.method} ({p.paid_at})
+            </p>
+          ))}
+        </div>
+      )}
+
+      {/* Summary Footer */}
+      <div className="flex flex-wrap items-center justify-end gap-6 border-t border-slate-100 pt-4 text-xs">
         <span className="text-slate-500">
-          Outstanding{" "}
-          <strong className={Number(invoice.outstanding) > 0 ? "text-amber-700" : "text-emerald-700"}>
-            {money(invoice.outstanding)}
+          Total Billed: <strong className="text-slate-900 font-bold ml-1">${money(invoice.total)}</strong>
+        </span>
+        <span className="text-slate-500">
+          Total Paid: <strong className="text-slate-900 font-bold ml-1">${money(invoice.paid)}</strong>
+        </span>
+        <span className="text-slate-500">
+          Balance Outstanding:{" "}
+          <strong
+            className={`font-bold ml-1 ${
+              Number(invoice.outstanding) > 0 ? "text-amber-700" : "text-emerald-700"
+            }`}
+          >
+            ${money(invoice.outstanding)}
           </strong>
         </span>
       </div>

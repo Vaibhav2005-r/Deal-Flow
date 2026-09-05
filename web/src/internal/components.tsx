@@ -1,42 +1,125 @@
+import React from "react";
 import type { ApprovalStep, Line } from "@/lib/api";
 
-export const STATE_STYLES: Record<string, string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  RISK_SCORED: "bg-blue-100 text-blue-800",
-  PENDING_MANAGER: "bg-amber-100 text-amber-800",
-  PENDING_FINANCE: "bg-orange-100 text-orange-800",
-  READY_TO_FULFILL: "bg-emerald-100 text-emerald-800",
-  SENT: "bg-indigo-100 text-indigo-800",
-  UNDER_NEGOTIATION: "bg-purple-100 text-purple-800",
+export const STATE_STYLES: Record<string, { bg: string; text: string; dot: string; border: string }> = {
+  DRAFT: {
+    bg: "bg-slate-50",
+    text: "text-slate-700",
+    dot: "bg-slate-400",
+    border: "border-slate-200",
+  },
+  RISK_SCORED: {
+    bg: "bg-blue-50",
+    text: "text-blue-700",
+    dot: "bg-blue-500",
+    border: "border-blue-200",
+  },
+  PENDING_MANAGER: {
+    bg: "bg-amber-50",
+    text: "text-amber-800",
+    dot: "bg-amber-500",
+    border: "border-amber-200",
+  },
+  PENDING_FINANCE: {
+    bg: "bg-orange-50",
+    text: "text-orange-800",
+    dot: "bg-orange-500",
+    border: "border-orange-200",
+  },
+  APPROVED: {
+    bg: "bg-emerald-50",
+    text: "text-emerald-800",
+    dot: "bg-emerald-500",
+    border: "border-emerald-200",
+  },
+  REJECTED: {
+    bg: "bg-rose-50",
+    text: "text-rose-800",
+    dot: "bg-rose-500",
+    border: "border-rose-200",
+  },
+  RETURNED: {
+    bg: "bg-amber-50",
+    text: "text-amber-800",
+    dot: "bg-amber-500",
+    border: "border-amber-200",
+  },
+  READY_TO_FULFILL: {
+    bg: "bg-emerald-50",
+    text: "text-emerald-800",
+    dot: "bg-emerald-500",
+    border: "border-emerald-200",
+  },
+  SENT: {
+    bg: "bg-indigo-50",
+    text: "text-indigo-800",
+    dot: "bg-indigo-500",
+    border: "border-indigo-200",
+  },
+  UNDER_NEGOTIATION: {
+    bg: "bg-purple-50",
+    text: "text-purple-800",
+    dot: "bg-purple-500",
+    border: "border-purple-200",
+  },
+  FULFILLED: {
+    bg: "bg-teal-50",
+    text: "text-teal-800",
+    dot: "bg-teal-500",
+    border: "border-teal-200",
+  },
 };
 
 export function StateBadge({ state }: { state: string }) {
-  const cls = STATE_STYLES[state] ?? "bg-slate-100 text-slate-700";
+  const normalized = state?.toUpperCase?.() ?? "DRAFT";
+  const style = STATE_STYLES[normalized] ?? STATE_STYLES.DRAFT;
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
-      {state.replaceAll("_", " ")}
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${style.bg} ${style.text} ${style.border} tracking-wide shadow-2xs whitespace-nowrap`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${style.dot} shrink-0`} />
+      {normalized.replaceAll("_", " ")}
     </span>
   );
 }
 
-/** Risk band mirrors the routing thresholds in §5.1: <20 auto, <50 manager. */
+/** Risk band mirrors the routing thresholds: <20 low risk, <50 manager approval, >=50 finance approval */
 export function RiskBadge({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-slate-400 text-sm">—</span>;
-  const cls =
-    score >= 50 ? "bg-red-100 text-red-800"
-    : score >= 20 ? "bg-amber-100 text-amber-800"
-    : "bg-emerald-100 text-emerald-800";
+  if (score === null || score === undefined) {
+    return <span className="text-slate-400 text-xs font-medium">—</span>;
+  }
+  
+  let cls = "bg-emerald-50 text-emerald-700 border-emerald-200";
+  let dotCls = "bg-emerald-500";
+  let label = "Low Risk";
+
+  if (score >= 50) {
+    cls = "bg-rose-50 text-rose-700 border-rose-200";
+    dotCls = "bg-rose-500";
+    label = "High Risk";
+  } else if (score >= 20) {
+    cls = "bg-amber-50 text-amber-800 border-amber-200";
+    dotCls = "bg-amber-500";
+    label = "Med Risk";
+  }
+
   return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>
-      BDRS {score.toFixed(1)}
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold border ${cls} shadow-2xs whitespace-nowrap`}
+      title={`BDRS Score: ${score.toFixed(1)} (${label})`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${dotCls} shrink-0`} />
+      <span className="font-mono">BDRS {score.toFixed(1)}</span>
     </span>
   );
 }
 
-/**
- * The approval screen's core: a manager has to see WHICH line breached and by
- * how much, not just a score. Breaching lines are called out per row.
- */
+const nf = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+export const money = (v: string | number | null | undefined) => {
+  if (v === null || v === undefined) return "0.00";
+  return nf.format(Number(v));
+};
+
 export function LineTable({
   lines,
   onDelete,
@@ -45,60 +128,71 @@ export function LineTable({
   onDelete?: (lineId: number) => void;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table className="w-full text-xs text-left">
         <thead>
-          <tr className="text-left text-slate-500 border-b border-slate-200">
-            <th className="py-2 font-medium">Product</th>
-            <th className="py-2 font-medium text-right">Qty</th>
-            <th className="py-2 font-medium text-right">List</th>
-            <th className="py-2 font-medium text-right">Disc %</th>
-            <th className="py-2 font-medium text-right">Ceiling</th>
-            <th className="py-2 font-medium text-right">Margin</th>
-            <th className="py-2 font-medium text-right">Net</th>
-            <th className="py-2 font-medium">Breach</th>
-            {onDelete && <th className="py-2 font-medium text-right">Action</th>}
+          <tr className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+            <th className="py-2.5 px-3">Product</th>
+            <th className="py-2.5 px-3 text-right">Qty</th>
+            <th className="py-2.5 px-3 text-right">List Price</th>
+            <th className="py-2.5 px-3 text-right">Disc %</th>
+            <th className="py-2.5 px-3 text-right">Ceiling</th>
+            <th className="py-2.5 px-3 text-right">Margin</th>
+            <th className="py-2.5 px-3 text-right">Net Value</th>
+            <th className="py-2.5 px-3">Status / Breach</th>
+            {onDelete && <th className="py-2.5 px-3 text-right">Action</th>}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-100 font-sans">
           {lines.map((ln) => (
             <tr
               key={ln.id}
-              className={`border-b border-slate-100 ${ln.breaches_ceiling ? "bg-red-50" : ""}`}
+              className={`hover:bg-slate-50/70 transition-colors ${
+                ln.breaches_ceiling ? "bg-rose-50/50" : ""
+              }`}
             >
-              <td className="py-2 pr-2">
-                {ln.product_name}
-                <span className="block text-xs text-slate-400">{ln.category}</span>
+              <td className="py-2.5 px-3">
+                <span className="font-semibold text-slate-900">{ln.product_name}</span>
+                <span className="block text-[11px] text-slate-400">{ln.category}</span>
               </td>
-              <td className="py-2 text-right">{ln.qty}</td>
-              <td className="py-2 text-right tabular-nums">{money(ln.list_value)}</td>
-              <td className="py-2 text-right tabular-nums">{Number(ln.discount_pct).toFixed(1)}</td>
-              <td className="py-2 text-right tabular-nums text-slate-500">
-                {ln.ceiling_pct_applied ? Number(ln.ceiling_pct_applied).toFixed(0) : "—"}
+              <td className="py-2.5 px-3 text-right font-medium text-slate-700">{ln.qty}</td>
+              <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">${money(ln.list_value)}</td>
+              <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
+                {Number(ln.discount_pct).toFixed(1)}%
               </td>
-              <td className="py-2 text-right tabular-nums text-slate-500">
+              <td className="py-2.5 px-3 text-right tabular-nums text-slate-500">
+                {ln.ceiling_pct_applied ? `${Number(ln.ceiling_pct_applied).toFixed(0)}%` : "—"}
+              </td>
+              <td className="py-2.5 px-3 text-right tabular-nums font-medium text-slate-700">
                 {ln.margin_pct ? `${Number(ln.margin_pct).toFixed(1)}%` : "—"}
               </td>
-              <td className="py-2 text-right tabular-nums">{money(ln.net_value)}</td>
-              <td className="py-2">
+              <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
+                ${money(ln.net_value)}
+              </td>
+              <td className="py-2.5 px-3">
                 {ln.breaches_ceiling ? (
-                  <span className="text-red-700 text-xs font-semibold" data-testid="breach">
-                    +{Number(ln.excess_pp).toFixed(1)}pp over
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold text-[11px]"
+                    data-testid="breach"
+                  >
+                    +{Number(ln.excess_pp).toFixed(1)}pp breach
                   </span>
                 ) : (
-                  <span className="text-slate-300 text-xs">ok</span>
+                  <span className="inline-flex items-center text-emerald-600 font-medium text-[11px]">
+                    ✓ within policy
+                  </span>
                 )}
               </td>
               {onDelete && (
-                <td className="py-2 text-right">
+                <td className="py-2.5 px-3 text-right">
                   <button
                     type="button"
                     onClick={() => onDelete(ln.id)}
                     data-testid={`delete-line-${ln.id}`}
-                    className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded hover:bg-red-50"
+                    className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
                     title="Remove line"
                   >
-                    Remove
+                    Delete
                   </button>
                 </td>
               )}
@@ -110,104 +204,124 @@ export function LineTable({
   );
 }
 
-const TRAIL_TONE: Record<string, string> = {
-  APPROVED: "text-emerald-700",
-  REJECTED: "text-red-700",
-  RETURNED: "text-amber-700",
-  VOIDED_BY_EDIT: "text-slate-400 line-through",
-  PENDING: "text-slate-900 font-medium",
+const TRAIL_TONE: Record<string, { badge: string; text: string }> = {
+  APPROVED: { badge: "bg-emerald-50 text-emerald-700 border-emerald-200", text: "Approved" },
+  REJECTED: { badge: "bg-rose-50 text-rose-700 border-rose-200", text: "Rejected" },
+  RETURNED: { badge: "bg-amber-50 text-amber-700 border-amber-200", text: "Returned for Edit" },
+  VOIDED_BY_EDIT: { badge: "bg-slate-100 text-slate-400 border-slate-200", text: "Voided by Edit" },
+  PENDING: { badge: "bg-blue-50 text-blue-700 border-blue-200", text: "Pending Decision" },
 };
 
-/**
- * Screen 6's audit trail: User | Action | Date | Note.
- *
- * A step id is not a user and a null date is not "just now" — an approval
- * record that cannot say who decided and when is not an audit trail, so all
- * four columns are shown, with an explicit dash where a value genuinely does
- * not exist yet.
- */
 export function ApprovalTrail({ steps }: { steps: ApprovalStep[] }) {
-  if (!steps.length) return null;
+  if (!steps || !steps.length) return null;
   const sorted = [...steps].sort((a, b) => a.id - b.id);
+  
   return (
-    <table className="w-full text-sm" data-testid="approval-trail">
-      <thead>
-        <tr className="text-left text-slate-500 border-b border-slate-200">
-          <th className="py-1.5 font-medium">User</th>
-          <th className="py-1.5 font-medium">Action</th>
-          <th className="py-1.5 font-medium">Date</th>
-          <th className="py-1.5 font-medium">Note</th>
-        </tr>
-      </thead>
-      <tbody>
-        {sorted.map((s) => (
-          <tr key={s.id} className="border-b border-slate-100">
-            <td className="py-1.5">
-              {s.decided_by_name ?? <span className="text-slate-300">—</span>}
-              <span className="block text-xs text-slate-400">
-                step {s.step_index + 1} · {s.approver_role.replaceAll("_", " ")}
-              </span>
-            </td>
-            <td className={`py-1.5 ${TRAIL_TONE[s.decision] ?? "text-slate-700"}`}>
-              {s.decision.replaceAll("_", " ").toLowerCase()}
-            </td>
-            <td className="py-1.5 text-slate-500 tabular-nums">
-              {s.decided_at
-                ? s.decided_at.slice(0, 10)
-                : <span className="text-slate-300">awaiting</span>}
-            </td>
-            <td className="py-1.5 text-slate-600">
-              {s.reason ?? <span className="text-slate-300">—</span>}
-            </td>
+    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <table className="w-full text-xs text-left" data-testid="approval-trail">
+        <thead>
+          <tr className="bg-slate-50/80 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+            <th className="py-2.5 px-3">Step & Reviewer</th>
+            <th className="py-2.5 px-3">Decision</th>
+            <th className="py-2.5 px-3">Timestamp</th>
+            <th className="py-2.5 px-3">Review Notes</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {sorted.map((s) => {
+            const tone = TRAIL_TONE[s.decision] ?? TRAIL_TONE.PENDING;
+            return (
+              <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
+                <td className="py-2.5 px-3">
+                  <span className="font-semibold text-slate-900">
+                    {s.decided_by_name ?? "Awaiting Reviewer"}
+                  </span>
+                  <span className="block text-[11px] text-slate-400">
+                    Step {s.step_index + 1} · {s.approver_role.replaceAll("_", " ")}
+                  </span>
+                </td>
+                <td className="py-2.5 px-3">
+                  <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-semibold border ${tone.badge}`}>
+                    {tone.text}
+                  </span>
+                </td>
+                <td className="py-2.5 px-3 text-slate-500 tabular-nums">
+                  {s.decided_at ? s.decided_at.slice(0, 16).replace("T", " ") : <span className="text-slate-400 italic">Pending</span>}
+                </td>
+                <td className="py-2.5 px-3 text-slate-700">
+                  {s.reason ? s.reason : <span className="text-slate-400 italic">No notes provided</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-const nf = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-export const money = (v: string | number) => nf.format(Number(v));
-
-/** Page scaffold: title, one-line purpose, optional actions. */
+/** Page header: title, subtitle, optional actions. */
 export function PageHeader({
-  title, subtitle, actions,
+  title,
+  subtitle,
+  actions,
+  badge,
 }: {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  badge?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-slate-200/80">
       <div>
-        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
-        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
+          {badge}
+        </div>
+        {subtitle && <p className="text-xs sm:text-sm text-slate-500 mt-1 font-normal">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex items-center gap-2.5 shrink-0 flex-wrap">{actions}</div>}
     </div>
   );
 }
 
 export function StatCard({
-  label, value, hint, tone = "slate",
+  label,
+  value,
+  hint,
+  tone = "slate",
+  icon,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
-  tone?: "slate" | "amber" | "emerald" | "red" | "indigo";
+  tone?: "slate" | "amber" | "emerald" | "red" | "indigo" | "blue";
+  icon?: React.ReactNode;
 }) {
-  const tones: Record<string, string> = {
-    slate: "text-slate-900",
-    amber: "text-amber-700",
-    emerald: "text-emerald-700",
-    red: "text-red-700",
-    indigo: "text-indigo-700",
+  const tones: Record<string, { text: string; bg: string; border: string }> = {
+    slate: { text: "text-slate-900", bg: "bg-slate-50", border: "border-slate-200" },
+    amber: { text: "text-amber-700", bg: "bg-amber-50/60", border: "border-amber-200/80" },
+    emerald: { text: "text-emerald-700", bg: "bg-emerald-50/60", border: "border-emerald-200/80" },
+    red: { text: "text-rose-700", bg: "bg-rose-50/60", border: "border-rose-200/80" },
+    indigo: { text: "text-indigo-700", bg: "bg-indigo-50/60", border: "border-indigo-200/80" },
+    blue: { text: "text-[#1d72f2]", bg: "bg-blue-50/60", border: "border-blue-200/80" },
   };
+
+  const selectedTone = tones[tone] ?? tones.slate;
+
   return (
-    <div className="bg-white p-4 rounded-lg border border-slate-200">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${tones[tone]}`}>{value}</p>
-      {hint && <p className="text-[11px] text-slate-400 mt-0.5">{hint}</p>}
+    <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+        {icon && <div className="text-slate-400">{icon}</div>}
+      </div>
+      <div className="mt-2">
+        <p className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${selectedTone.text}`}>
+          {value}
+        </p>
+        {hint && <p className="text-[11px] text-slate-400 mt-1 font-medium">{hint}</p>}
+      </div>
     </div>
   );
 }
@@ -215,8 +329,34 @@ export function StatCard({
 export function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
   return (
-    <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded px-3 py-2">
-      {error}
+    <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium rounded-lg p-3 flex items-start gap-2 shadow-2xs mb-4">
+      <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>{error}</span>
+    </div>
+  );
+}
+
+export function EmptyState({
+  title = "No data found",
+  description = "There are no records matching your current filter criteria.",
+  action,
+}: {
+  title?: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="text-center py-12 px-4 rounded-xl border-2 border-dashed border-slate-200 bg-white/50 my-4">
+      <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+        </svg>
+      </div>
+      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">{description}</p>
+      {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
@@ -224,7 +364,7 @@ export function ErrorBanner({ error }: { error: string | null }) {
 export function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="py-8 text-center text-sm text-slate-400">
+      <td colSpan={colSpan} className="py-10 text-center text-xs text-slate-400 font-medium">
         {text}
       </td>
     </tr>
@@ -232,27 +372,41 @@ export function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
 }
 
 export function FilterTabs({
-  options, value, onChange,
+  options,
+  value,
+  onChange,
 }: {
-  options: { key: string; label: string }[];
+  options: { key: string; label: string; count?: number }[];
   value: string;
   onChange: (k: string) => void;
 }) {
   return (
-    <div className="flex gap-1">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          onClick={() => onChange(o.key)}
-          className={`px-3 py-1.5 text-xs font-medium rounded ${
-            value === o.key
-              ? "bg-slate-900 text-white"
-              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-lg w-fit overflow-x-auto no-scrollbar">
+      {options.map((o) => {
+        const active = value === o.key;
+        return (
+          <button
+            key={o.key}
+            onClick={() => onChange(o.key)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+              active
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+            }`}
+          >
+            <span>{o.label}</span>
+            {o.count !== undefined && (
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  active ? "bg-slate-100 text-slate-800" : "bg-slate-300/60 text-slate-600"
+                }`}
+              >
+                {o.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -292,7 +446,7 @@ export function Pagination({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 shadow-2xs">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 shadow-2xs">
       <div className="flex items-center gap-3">
         <span>
           Showing <strong className="text-slate-900 font-semibold">{start}</strong> to{" "}
@@ -306,7 +460,7 @@ export function Pagination({
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:border-indigo-500"
+              className="border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:ring-1 focus:ring-[#1d72f2]"
             >
               {pageSizeOptions.map((opt) => (
                 <option key={opt} value={opt}>
@@ -323,7 +477,7 @@ export function Pagination({
           type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+          className="px-2.5 py-1 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
         >
           ← Prev
         </button>
@@ -333,9 +487,9 @@ export function Pagination({
             key={p}
             type="button"
             onClick={() => onPageChange(p)}
-            className={`min-w-7 h-7 px-2 rounded font-semibold text-xs transition-colors cursor-pointer ${
+            className={`min-w-7 h-7 px-2 rounded-md font-semibold text-xs transition-colors cursor-pointer ${
               p === page
-                ? "bg-indigo-600 text-white shadow-2xs"
+                ? "bg-[#1d72f2] text-white shadow-2xs"
                 : "border border-slate-200 hover:bg-slate-50 text-slate-700"
             }`}
           >
@@ -347,7 +501,7 @@ export function Pagination({
           type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+          className="px-2.5 py-1 rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
         >
           Next →
         </button>
