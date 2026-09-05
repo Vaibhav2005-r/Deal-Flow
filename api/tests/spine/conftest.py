@@ -80,3 +80,8 @@ def manager(client) -> dict:
 @pytest.fixture
 def finance(client) -> dict:
     return login(client, "aisha.karim@dealflow.example")
+
+
+@pytest.fixture
+def admin(client) -> dict:
+    return login(client, "root@dealflow.example")

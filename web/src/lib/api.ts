@@ -43,6 +43,8 @@ export const api = {
     request<T>(p, s, { method: "POST", body: JSON.stringify(body ?? {}) }),
   patch: <T>(p: string, body?: unknown, s: Scope = "internal") =>
     request<T>(p, s, { method: "PATCH", body: JSON.stringify(body ?? {}) }),
+  put: <T>(p: string, body?: unknown, s: Scope = "internal") =>
+    request<T>(p, s, { method: "PUT", body: JSON.stringify(body ?? {}) }),
   del: <T>(p: string, s: Scope = "internal") =>
     request<T>(p, s, { method: "DELETE" }),
 };
@@ -319,4 +321,157 @@ export interface ReplayResult {
   output_matches: boolean;
   reproduced: boolean;
   replayed_output: any;
+}
+
+// ---------------------------------------------------------------- screen 2
+export interface DashboardOut {
+  role: string;
+  full_name: string;
+  cards: {
+    pending_approvals: number;
+    open_quotations: number;
+    at_risk_deals: number;
+    awaiting_fulfillment: number;
+    unpaid_invoices: number;
+  };
+  at_risk: {
+    quotation_id: number;
+    customer_name: string;
+    state: string;
+    days_inactive: number;
+    reason: string;
+  }[];
+  recent_activity: {
+    quotation_id: number;
+    customer_name: string;
+    state: string;
+    rep_name: string;
+    risk_score: string | null;
+    last_activity_at: string;
+  }[];
+}
+
+// ---------------------------------------------------------------- screen 7
+export interface StockRow {
+  warehouse: string;
+  warehouse_name: string;
+  product_id: number;
+  sku: string;
+  product_name: string;
+  category: string;
+  qty_on_hand: number;
+  qty_reserved: number;
+  qty_available: number;
+}
+
+export interface PendingOrder {
+  quotation_id: number;
+  customer_name: string;
+  state: string;
+  planned: boolean;
+  status: string;
+  warehouses: string[];
+  shipment_count: number;
+  net_total: string;
+}
+
+// ---------------------------------------------------------------- screen 9
+export interface SubscriptionRow {
+  id: number;
+  quotation_id: number;
+  customer_name: string;
+  customer_tier: string;
+  plan: string;
+  cycle: string;
+  start_date: string;
+  next_bill_date: string;
+  status: string;
+  amount: string;
+}
+
+// ------------------------------------------------------------ screens 12/13
+export interface InvoiceRow {
+  id: number;
+  reference: string;
+  quotation_id: number;
+  customer_name: string;
+  kind: string;
+  total: string;
+  paid: string;
+  credited: string;
+  outstanding: string;
+  status: string;
+  period_key: string | null;
+  subscription_id: number | null;
+  issued_at: string | null;
+}
+
+export interface InvoiceDetailOut extends InvoiceRow {
+  tracker: { step: string; done: boolean }[];
+  lines: { description: string; qty: number; unit_price: string; amount: string }[];
+  credit_notes: { amount: string; reason: string }[];
+  payments: { amount: string; method: string; paid_at: string }[];
+  quotation_state: string | null;
+}
+
+// ----------------------------------------------------------- screens 16/17
+export interface CatalogSummary {
+  total_products: number;
+  subscription_products: number;
+  price_lists: number;
+  currencies: string[];
+  variants: number;
+}
+
+export interface CatalogProduct {
+  id: number;
+  sku: string;
+  name: string;
+  category: string;
+  list_price: string;
+  unit_cost: string;
+  margin_pct: string;
+  is_subscription: boolean;
+  is_promoted: boolean;
+  variants: number;
+  qty_available: number;
+}
+
+export interface ProductDetailOut {
+  id: number;
+  sku: string;
+  name: string;
+  category: string;
+  list_price: string;
+  unit_cost: string;
+  is_subscription: boolean;
+  is_promoted: boolean;
+  recurring_interval: string | null;
+  qty_on_hand: number;
+  qty_reserved: number;
+  variants: { attribute: string; values: { value: string; extra_price: string }[] }[];
+  price_lists: { name: string; currency: string; price: string }[];
+}
+
+// --------------------------------------------------------------- screen 18
+export interface DiscountConfig {
+  tier_ceilings: { tier: string; ceiling_pct: string }[];
+  category_ceilings: {
+    tier: string;
+    category: string;
+    ceiling_pct: string;
+    floor_margin_pct: string;
+    effective_pct: string;
+  }[];
+  approval_chains: {
+    min_score: string;
+    max_score: string;
+    steps: string[];
+    label: string;
+  }[];
+  engine_thresholds: {
+    route_manager_min: string;
+    route_finance_min: string;
+    hard_stop_excess_pp: string;
+  };
 }

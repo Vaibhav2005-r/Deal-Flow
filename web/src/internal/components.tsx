@@ -33,9 +33,6 @@ export function RiskBadge({ score }: { score: number | null }) {
   );
 }
 
-const money = (v: string) =>
-  new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Number(v));
-
 /**
  * The approval screen's core: a manager has to see WHICH line breached and by
  * how much, not just a score. Breaching lines are called out per row.
@@ -132,5 +129,96 @@ export function ApprovalTrail({ steps }: { steps: ApprovalStep[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+const nf = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
+export const money = (v: string | number) => nf.format(Number(v));
+
+/** Page scaffold: title, one-line purpose, optional actions. */
+export function PageHeader({
+  title, subtitle, actions,
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+        {subtitle && <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>}
+      </div>
+      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+    </div>
+  );
+}
+
+export function StatCard({
+  label, value, hint, tone = "slate",
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  tone?: "slate" | "amber" | "emerald" | "red" | "indigo";
+}) {
+  const tones: Record<string, string> = {
+    slate: "text-slate-900",
+    amber: "text-amber-700",
+    emerald: "text-emerald-700",
+    red: "text-red-700",
+    indigo: "text-indigo-700",
+  };
+  return (
+    <div className="bg-white p-4 rounded-lg border border-slate-200">
+      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${tones[tone]}`}>{value}</p>
+      {hint && <p className="text-[11px] text-slate-400 mt-0.5">{hint}</p>}
+    </div>
+  );
+}
+
+export function ErrorBanner({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded px-3 py-2">
+      {error}
+    </div>
+  );
+}
+
+export function EmptyRow({ colSpan, text }: { colSpan: number; text: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="py-8 text-center text-sm text-slate-400">
+        {text}
+      </td>
+    </tr>
+  );
+}
+
+export function FilterTabs({
+  options, value, onChange,
+}: {
+  options: { key: string; label: string }[];
+  value: string;
+  onChange: (k: string) => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      {options.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => onChange(o.key)}
+          className={`px-3 py-1.5 text-xs font-medium rounded ${
+            value === o.key
+              ? "bg-slate-900 text-white"
+              : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
