@@ -57,6 +57,17 @@ export default function Pipeline() {
 
   const quote = quotes.find((q) => q.id === selected);
 
+  let isFinanceOrAdmin = false;
+  try {
+    const raw = localStorage.getItem("df360.internal.user");
+    if (raw) {
+      const u = JSON.parse(raw);
+      isFinanceOrAdmin = u?.role === "finance" || u?.role === "admin";
+    }
+  } catch {
+    isFinanceOrAdmin = false;
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-slate-900">Fulfillment &amp; billing</h2>
@@ -91,34 +102,123 @@ export default function Pipeline() {
         </label>
 
         {quote && (
-          <div className="flex flex-wrap items-center gap-2 mt-4">
-            <StateBadge state={quote.state} />
-            <button onClick={() => act("/send-to-portal", "sent")}
-              className="bg-slate-700 text-white rounded px-3 py-1.5 text-xs font-medium">
-              Send to portal
-            </button>
-            <button onClick={() => act("/customer-confirm", "confirmed")}
-              className="bg-slate-700 text-white rounded px-3 py-1.5 text-xs font-medium">
-              Customer confirm
-            </button>
-            <button onClick={() => act("/plan-fulfillment", "planned")}
-              data-testid="plan-fulfillment"
-              className="bg-indigo-700 text-white rounded px-3 py-1.5 text-xs font-medium">
-              Plan fulfillment
-            </button>
-            <button onClick={() => act("/generate-invoices", "invoiced")}
-              data-testid="generate-invoices"
-              className="bg-indigo-700 text-white rounded px-3 py-1.5 text-xs font-medium">
-              Generate invoices
-            </button>
-            {due && Number(due.outstanding) > 0 && (
+          <div className="space-y-3 mt-4 pt-4 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500 mr-2">Current State:</span>
+              <StateBadge state={quote.state} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => act("/payments", "paid", { amount: due.outstanding, method: "bank_transfer" })}
-                data-testid="record-payment"
-                className="bg-emerald-700 text-white rounded px-3 py-1.5 text-xs font-medium">
-                Record payment of {money(due.outstanding)}
+                onClick={() => act("/send-to-portal", "sent")}
+                disabled={!quote.legal_events?.includes("send_to_portal")}
+                title={
+                  quote.legal_events?.includes("send_to_portal")
+                    ? "Deliver quotation to customer portal for review"
+                    : "Only available when quote is READY TO FULFILL"
+                }
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition-all ${
+                  quote.legal_events?.includes("send_to_portal")
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                }`}
+              >
+                1. Send to portal
               </button>
-            )}
+
+              <button
+                onClick={() => act("/customer-confirm", "confirmed")}
+                disabled={!quote.legal_events?.includes("customer_confirm")}
+                title={
+                  quote.legal_events?.includes("customer_confirm")
+                    ? "Record customer confirmation / acceptance"
+                    : "Only available when quote is SENT or UNDER NEGOTIATION"
+                }
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition-all ${
+                  quote.legal_events?.includes("customer_confirm")
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                }`}
+              >
+                2. Customer confirm
+              </button>
+
+              <button
+                onClick={() => act("/plan-fulfillment", "planned")}
+                data-testid="plan-fulfillment"
+                disabled={!quote.legal_events?.includes("plan_fulfillment")}
+                title={
+                  quote.legal_events?.includes("plan_fulfillment")
+                    ? "Run optimal warehouse solver to allocate stock across hubs"
+                    : "Requires customer confirmation first (CONFIRMED state)"
+                }
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition-all ${
+                  quote.legal_events?.includes("plan_fulfillment")
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                }`}
+              >
+                3. Plan fulfillment
+              </button>
+
+              <button
+                onClick={() => act("/generate-invoices", "invoiced")}
+                data-testid="generate-invoices"
+                disabled={!quote.legal_events?.includes("generate_invoices")}
+                title={
+                  quote.legal_events?.includes("generate_invoices")
+                    ? "Generate one-time invoice and recurring billing schedules"
+                    : "Requires fulfillment plan first (FULFILLING state)"
+                }
+                className={`rounded px-3 py-1.5 text-xs font-semibold transition-all ${
+                  quote.legal_events?.includes("generate_invoices")
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                    : "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                }`}
+              >
+                4. Generate invoices
+              </button>
+
+              {due && Number(due.outstanding) > 0 && quote.legal_events?.includes("record_payment") && (
+                isFinanceOrAdmin ? (
+                  <button
+                    onClick={() => act("/payments", "paid", { amount: due.outstanding, method: "bank_transfer" })}
+                    data-testid="record-payment"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white rounded px-3 py-1.5 text-xs font-semibold shadow-xs"
+                  >
+                    5. Record payment of ₹{money(due.outstanding)}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled
+                      className="bg-slate-100 text-slate-400 border border-slate-200 rounded px-3 py-1.5 text-xs font-semibold cursor-not-allowed"
+                    >
+                      5. Record payment (Locked)
+                    </button>
+                    <span className="text-xs text-amber-800 bg-amber-50 border border-amber-200 px-2 py-1 rounded">
+                      🔒 Finance only: Sign out &amp; sign in as <strong>Aisha Karim · finance</strong> to collect payment
+                    </span>
+                  </div>
+                )
+              )}
+
+              {quote.state === "PAID" && (
+                <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+                  ✓ Order complete &amp; fully settled
+                </span>
+              )}
+            </div>
+
+            <div className="text-[11px] text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">
+              <span className="font-semibold text-slate-700">Lifecycle flow: </span>
+              <span className={quote.state === "READY_TO_FULFILL" ? "text-indigo-600 font-bold" : ""}>Ready to Fulfill</span> →{" "}
+              <span className={quote.state === "SENT" ? "text-indigo-600 font-bold" : ""}>Sent to Portal</span> →{" "}
+              <span className={quote.state === "CONFIRMED" ? "text-indigo-600 font-bold" : ""}>Customer Confirmed</span> →{" "}
+              <span className={quote.state === "FULFILLING" ? "text-indigo-600 font-bold" : ""}>Fulfilling</span> →{" "}
+              <span className={quote.state === "INVOICED" ? "text-indigo-600 font-bold" : ""}>Invoiced</span> →{" "}
+              <span className={quote.state === "PAID" ? "text-emerald-700 font-bold" : ""}>Paid</span>
+            </div>
           </div>
         )}
       </section>

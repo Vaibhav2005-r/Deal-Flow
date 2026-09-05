@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, type Customer, type Policy, type Product, type Quote, type Score } from "@/lib/api";
 import { ApprovalTrail, LineTable, RiskBadge, StateBadge } from "./components";
+import UpsellPanel from "./UpsellPanel";
 
 export default function QuoteBuilder() {
   const { id } = useParams<{ id: string }>();
@@ -93,6 +94,23 @@ export default function QuoteBuilder() {
       const q = await api.del<Quote>(`/api/quotes/${quote.id}/lines/${lineId}`);
       setQuote(q);
     });
+
+  const acceptUpsell = (prodId: number) => {
+    const prod = products.find((p) => p.id === prodId);
+    const pol = policies.find(
+      (p) => p.tier === customer?.tier && p.category === prod?.category,
+    );
+    const ceilingDisc = pol ? String(pol.ceiling_pct) : "0";
+    run(async () => {
+      if (!quote) return;
+      const q = await api.post<Quote>(`/api/quotes/${quote.id}/lines`, {
+        product_id: prodId,
+        qty: 1,
+        discount_pct: ceilingDisc,
+      });
+      setQuote(q);
+    });
+  };
 
   const confirm = () =>
     run(async () => {
@@ -266,6 +284,10 @@ export default function QuoteBuilder() {
             )}
           </div>
         </section>
+      )}
+
+      {quote && quote.lines.length > 0 && isEditable && (
+        <UpsellPanel quoteId={quote.id} onAccept={acceptUpsell} />
       )}
 
       {quote && quote.lines.length > 0 && (

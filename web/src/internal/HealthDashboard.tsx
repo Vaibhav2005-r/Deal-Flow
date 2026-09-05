@@ -165,7 +165,7 @@ export default function HealthDashboard() {
                   <tr key={d.quotation_id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-3 font-mono font-bold text-slate-900">
                       <Link
-                        to={`/quotes?id=${d.quotation_id}`}
+                        to={`/quotes/${d.quotation_id}`}
                         className="text-indigo-600 hover:underline"
                         title="View quote"
                       >
@@ -324,7 +324,7 @@ export default function HealthDashboard() {
 
             <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
               <Link
-                to={`/quotes?id=${selectedDeal.quotation_id}`}
+                to={`/quotes/${selectedDeal.quotation_id}`}
                 className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
               >
                 Go to Quote
