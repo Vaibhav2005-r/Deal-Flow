@@ -5,6 +5,13 @@ import { api, type SuggestionsOut } from "@/lib/api";
  * Tier-1 output (§8): these are PROPOSALS. Accepting one adds a line through
  * the normal mutation path — the suggestion itself never writes anything.
  */
+/**
+ * §B5: each suggestion offers Add to Quote and Dismiss.
+ *
+ * Dismissal is per-quotation and lives in this component only — it hides a
+ * suggestion for the rest of the session rather than writing a preference,
+ * because the advisor is Tier 1 (§8) and a T1 agent must not persist state.
+ */
 export default function UpsellPanel({
   quoteId,
   onAccept,
@@ -13,6 +20,7 @@ export default function UpsellPanel({
   onAccept: (productId: number) => void;
 }) {
   const [data, setData] = useState<SuggestionsOut | null>(null);
+  const [dismissed, setDismissed] = useState<number[]>([]);
 
   useEffect(() => {
     api.get<SuggestionsOut>(`/api/quotes/${quoteId}/suggestions`)
@@ -32,7 +40,7 @@ export default function UpsellPanel({
       </div>
 
       <ul className="space-y-2">
-        {data.suggestions.map((s) => (
+        {data.suggestions.filter((s) => !dismissed.includes(s.product_id)).map((s) => (
           <li
             key={s.product_id}
             className="flex items-center gap-3 border border-slate-100 rounded px-3 py-2"
@@ -55,11 +63,19 @@ export default function UpsellPanel({
               </p>
             </div>
             <button
+              onClick={() => setDismissed([...dismissed, s.product_id])}
+              data-testid={`dismiss-${s.sku}`}
+              className="text-slate-500 hover:text-slate-800 rounded px-2 py-1 text-xs"
+              title="Hide this suggestion for now"
+            >
+              Dismiss
+            </button>
+            <button
               onClick={() => onAccept(s.product_id)}
               data-testid={`accept-${s.sku}`}
               className="bg-slate-700 text-white rounded px-3 py-1 text-xs font-medium"
             >
-              Add
+              Add to quote
             </button>
           </li>
         ))}

@@ -10,6 +10,7 @@ import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
 import FinanceHome from "./FinanceHome";
 import DiscountConfig from "./DiscountConfig";
+import Operations from "./Operations";
 import FulfillmentList from "./FulfillmentList";
 import Invoices from "./Invoices";
 import Subscriptions from "./Subscriptions";
@@ -33,6 +34,18 @@ const tab = ({ isActive }: { isActive: boolean }) =>
 
 export default function InternalRouter() {
   const [authed, setAuthed] = useState(hasScope("internal"));
+
+  /**
+   * Navigation renders from the capabilities the SERVER grants (§3), not from
+   * a role name matched in the client. A rep and a manager differ by more than
+   * "is finance", and a UI that decides for itself which role sees which link
+   * drifts from what the API actually permits — invisibly, until someone
+   * clicks. `can` falls back to the old role check only while /api/me is still
+   * in flight, so the first paint is never wrong in the other direction.
+   */
+  const { can, me } = useMe("internal");
+  const ready = !!me;
+
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [currentUserData, setCurrentUserData] = useState<InternalUserInfo | null>(() => getCurrentUser());
@@ -80,16 +93,6 @@ export default function InternalRouter() {
   const roleName = user?.role ? String(user.role).toLowerCase() : getInternalRole();
   const isFinance = roleName.includes("finance") || isFinanceUser();
 
-  /**
-   * Navigation renders from the capabilities the SERVER grants (§3), not from
-   * a role name matched in the client. A rep and a manager differ by more than
-   * "is finance", and a UI that decides for itself which role sees which link
-   * drifts from what the API actually permits — invisibly, until someone
-   * clicks. `can` falls back to the old role check only while /api/me is still
-   * in flight, so the first paint is never wrong in the other direction.
-   */
-  const { can, me } = useMe("internal");
-  const ready = !!me;
   const designation = getRoleDesignation(roleName);
 
   const initials = (user?.full_name ?? "User")
@@ -342,6 +345,28 @@ export default function InternalRouter() {
                     </div>
                   </div>
 
+                  {/* §B1 workspace actions. Reload pulls fresh pricing, stock and
+                      approval state on demand: the screens already poll, but a rep
+                      about to quote wants certainty rather than a wait. */}
+                  <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => window.location.reload()}
+                      data-testid="reload-data"
+                      title="Refresh pricing, stock and approval data"
+                      className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      Reload data
+                    </button>
+                    <NavLink
+                      to="/operations"
+                      data-testid="go-to-backend"
+                      className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer text-center"
+                    >
+                      Back-end
+                    </NavLink>
+                  </div>
+
                   {/* Actions */}
                   <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
                     <button
@@ -409,6 +434,7 @@ export default function InternalRouter() {
               {(ready ? can("manage_catalog") : !isFinance) && <NavLink to="/catalog" className={tab}>Products</NavLink>}
               {(ready ? can("view_fulfillment") : !isFinance) && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
               {(ready ? can("configure_discounts") : !isFinance) && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
+              {(ready ? can("manage_catalog") : !isFinance) && <NavLink to="/operations" className={tab}>Ops</NavLink>}
               {(ready ? can("view_audit_log") : true) && <NavLink to="/reliability" className={tab}>Audit</NavLink>}
             </div>
           </div>
@@ -429,6 +455,7 @@ export default function InternalRouter() {
           <Route path="invoices" element={<Invoices />} />
           <Route path="catalog" element={<Catalog />} />
           <Route path="discount-config" element={<DiscountConfig />} />
+          <Route path="operations" element={<Operations />} />
           <Route path="health" element={<HealthDashboard />} />
           <Route path="reports" element={<Reports />} />
           <Route path="reliability" element={<ReliabilityPanel />} />

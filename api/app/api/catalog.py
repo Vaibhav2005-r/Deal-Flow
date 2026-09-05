@@ -38,6 +38,9 @@ class ProductIn(BaseModel):
     unit_cost: Decimal = Field(ge=0)
     is_subscription: bool = False
     is_promoted: bool = False
+    unit: str = "Each"
+    tax_pct: Decimal = Field(default=Decimal("18.00"), ge=0, le=100)
+    description: str | None = None
 
 
 class ProductPatch(BaseModel):
@@ -45,6 +48,9 @@ class ProductPatch(BaseModel):
     list_price: Decimal | None = Field(default=None, gt=0)
     unit_cost: Decimal | None = Field(default=None, ge=0)
     is_promoted: bool | None = None
+    unit: str | None = None
+    tax_pct: Decimal | None = Field(default=None, ge=0, le=100)
+    description: str | None = None
 
 
 class VariantIn(BaseModel):
@@ -151,6 +157,8 @@ def list_products(
             ) if p.list_price else "0",
             "is_subscription": p.is_subscription,
             "is_promoted": p.is_promoted,
+            "unit": p.unit,
+            "tax_pct": str(p.tax_pct),
             "variants": variant_counts.get(p.id, 0),
             "qty_available": int(stock_totals.get(p.id) or 0),
         }
@@ -196,6 +204,9 @@ def product_detail(
         "category": product.category,
         "list_price": str(product.list_price),
         "unit_cost": str(product.unit_cost),
+        "unit": product.unit,
+        "tax_pct": str(product.tax_pct),
+        "description": product.description,
         "is_subscription": product.is_subscription,
         "is_promoted": product.is_promoted,
         # only meaningful for subscription products — the UI hides it otherwise

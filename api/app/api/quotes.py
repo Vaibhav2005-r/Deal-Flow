@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import math
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -28,11 +28,12 @@ from app.services.quote_lines import (
     ConcurrencyError,
     append_line,
     apply_line_update,
+    apply_order_discount,
     mutate_lines,
     remove_line,
 )
 from app.services.scoring import rep_discount_robust_z, score_quotation
-from app.services.snapshots import build_governance_snapshot
+from app.services.snapshots import build_governance_snapshot, persist_resolved_ceilings
 from app.services.state_machine import Event, fire
 
 router = APIRouter(prefix="/api/quotes", tags=["quotes"])
@@ -120,6 +121,12 @@ def create_quote(
         append_line(session, quote, _product(session, line.product_id),
                     line.qty, line.discount_pct, line.unit_price)
     session.flush()
+
+    # Resolve ceilings immediately so the builder can show a breach on a DRAFT
+    # rather than "—" until the rep presses Confirm.
+    if quote.lines:
+        persist_resolved_ceilings(session, _snapshot_for(session)(quote))
+        session.flush()
     return quote_out(session, quote)
 
 
@@ -208,6 +215,37 @@ def delete_line(
     mutate_lines(
         session, quote, expected_version=version,
         mutate=lambda _q: remove_line(session, line),
+        build_snapshot=_snapshot_for(session),
+        actor_id=user.id,
+    )
+    session.flush()
+    return quote_out(session, quote)
+
+
+class OrderDiscountIn(BaseModel):
+    discount_pct: Decimal = Field(ge=0, le=100)
+
+
+@router.post("/{quote_id}/order-discount", response_model=QuoteOut)
+def set_order_discount(
+    quote_id: int,
+    body: OrderDiscountIn,
+    expected_version: int | None = None,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_internal_user),
+) -> QuoteOut:
+    """Apply one discount to every line (§B3).
+
+    Goes through `mutate_lines` like any other line edit, so a post-approval
+    quotation still voids its approvals and re-scores -- an order-level control
+    that bypassed §7 would be the easiest way to slip a discount past the chain.
+    """
+    quote = _load(session, quote_id)
+    version = _check_version(quote, expected_version)
+
+    mutate_lines(
+        session, quote, expected_version=version,
+        mutate=lambda q: apply_order_discount(session, q, body.discount_pct),
         build_snapshot=_snapshot_for(session),
         actor_id=user.id,
     )

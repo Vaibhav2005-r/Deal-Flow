@@ -107,6 +107,24 @@ PRODUCTS: list[tuple[str, str, str, str, str]] = [
 
 #: (name, tier, contact person, phone, billing address) -- the portal Profile
 #: tab reads these, so they are stored rather than invented in the UI.
+#: §A2 general info. Sales unit and tax rate follow the category; the
+#: description is generated from the product's own name and category so every
+#: row has real, specific copy rather than one repeated placeholder.
+UNITS: dict[str, str] = {
+    "Hardware": "Each", "Software": "Licence",
+    "Service": "Engagement", "Subscription": "Month",
+}
+TAX_BY_CATEGORY: dict[str, str] = {
+    "Hardware": "18.00", "Software": "18.00",
+    "Service": "18.00", "Subscription": "12.00",
+}
+DESCRIPTIONS: dict[str, str] = {
+    "Hardware": "Supplied with a three-year return-to-base warranty.",
+    "Software": "Perpetual licence with twelve months of updates included.",
+    "Service": "Delivered on site by a certified engineer; scheduling agreed at order.",
+    "Subscription": "Billed on the plan schedule; cancel with effect from the next period.",
+}
+
 CUSTOMERS: list[tuple[str, Tier]] = [
     ("Northwind Logistics Pvt Ltd", Tier.GOLD),
     ("Harbourline Shipping", Tier.GOLD),
@@ -270,6 +288,9 @@ def seed_reference(session: Session, rng: random.Random) -> dict:
                 is_subscription=is_sub,
                 plan_id=plans[0].id if is_sub else None,
                 is_promoted=sku in {"SW-BI-01", "SB-MSP-GD", "SV-AUD-01"},
+                unit=UNITS.get(category, "Each"),
+                tax_pct=Decimal(TAX_BY_CATEGORY.get(category, "18.00")),
+                description=f"{name}. {DESCRIPTIONS.get(category, '')}".strip(),
             )
         )
     session.add_all(products)

@@ -82,6 +82,14 @@ class Product(Entity):
     )
     is_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    #: §A2's remaining general-info fields. `unit` is the sales unit shown on a
+    #: line ("Each", "Licence", "Day"); tax is a percentage like every other
+    #: rate in the schema (§12: whole numbers, 18.00 == 18%).
+    unit: Mapped[str] = mapped_column(String(30), nullable=False, default="Each")
+    tax_pct: Mapped[Decimal] = mapped_column(Percent, nullable=False,
+                                             default=Decimal("18.00"))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class ProductVariant(Entity):
     __tablename__ = "product_variant"

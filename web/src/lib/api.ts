@@ -620,3 +620,23 @@ export interface PortalMessageSummary {
   from_customer: boolean;
   created_at: string | null;
 }
+
+// ------------------------------------------------------------ §A4/A5 admin
+export interface WarehouseRow {
+  id: number;
+  code: string;
+  name: string;
+  unit_ship_cost: string;
+  ship_fixed_cost: string;
+  sku_count: number;
+  units_on_hand: number;
+  units_reserved: number;
+}
+
+export interface PlanRow {
+  id: number;
+  name: string;
+  interval: string;
+  proration_policy: string;
+  cancellation_policy: string;
+}

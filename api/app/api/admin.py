@@ -22,7 +22,15 @@ from app.domain.governance import (
     ROUTE_MANAGER_MIN,
 )
 from app.models.enums import Role
-from app.models.tables import ApprovalRule, DiscountPolicy, TierPolicy, User
+from app.models.tables import (
+    ApprovalRule,
+    DiscountPolicy,
+    Stock,
+    SubscriptionPlan,
+    TierPolicy,
+    User,
+    Warehouse,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -176,3 +184,125 @@ def save_discount_config(
     session.flush()
 
     return _read_config(session)
+
+
+# --------------------------------------------------------------------------
+# §A4 warehouses
+# --------------------------------------------------------------------------
+
+
+class WarehouseIn(BaseModel):
+    code: str = Field(min_length=2, max_length=20)
+    name: str = Field(min_length=2, max_length=120)
+    unit_ship_cost: Decimal = Field(ge=0)
+    ship_fixed_cost: Decimal = Field(ge=0, default=Decimal("150.00"))
+
+
+class WarehousePatch(BaseModel):
+    name: str | None = None
+    unit_ship_cost: Decimal | None = Field(default=None, ge=0)
+    ship_fixed_cost: Decimal | None = Field(default=None, ge=0)
+
+
+def _warehouse_row(session: Session, w: Warehouse) -> dict:
+    stock = session.scalars(select(Stock).where(Stock.warehouse_id == w.id)).all()
+    return {
+        "id": w.id, "code": w.code, "name": w.name,
+        "unit_ship_cost": str(w.unit_ship_cost),
+        "ship_fixed_cost": str(w.ship_fixed_cost),
+        "sku_count": len(stock),
+        "units_on_hand": sum(s.qty_on_hand for s in stock),
+        "units_reserved": sum(s.qty_reserved for s in stock),
+    }
+
+
+@router.get("/warehouses")
+def list_warehouses(
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> list[dict]:
+    return [
+        _warehouse_row(session, w)
+        for w in session.scalars(select(Warehouse).order_by(Warehouse.code)).all()
+    ]
+
+
+@router.post("/warehouses", status_code=201)
+def create_warehouse(
+    body: WarehouseIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    code = body.code.strip().upper()
+    if session.scalar(select(Warehouse).where(Warehouse.code == code)):
+        raise HTTPException(status_code=409, detail=f"warehouse {code} already exists")
+    w = Warehouse(
+        code=code, name=body.name.strip(),
+        unit_ship_cost=body.unit_ship_cost, ship_fixed_cost=body.ship_fixed_cost,
+    )
+    session.add(w)
+    session.flush()
+    return _warehouse_row(session, w)
+
+
+@router.patch("/warehouses/{warehouse_id}")
+def update_warehouse(
+    warehouse_id: int,
+    body: WarehousePatch,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    w = session.get(Warehouse, warehouse_id)
+    if w is None:
+        raise HTTPException(status_code=404, detail="warehouse not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(w, field, value)
+    session.flush()
+    return _warehouse_row(session, w)
+
+
+# --------------------------------------------------------------------------
+# §A5 subscription plans
+# --------------------------------------------------------------------------
+
+
+class PlanIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    interval: str = Field(pattern="^(monthly|quarterly|yearly)$")
+    proration_policy: str = Field(default="day_based", pattern="^(day_based|none)$")
+    cancellation_policy: str = Field(
+        default="end_of_period", pattern="^(end_of_period|immediate)$"
+    )
+
+
+@router.get("/subscription-plans")
+def list_plans(
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> list[dict]:
+    return [
+        {
+            "id": p.id, "name": p.name, "interval": p.interval,
+            "proration_policy": p.proration_policy,
+            "cancellation_policy": p.cancellation_policy,
+        }
+        for p in session.scalars(
+            select(SubscriptionPlan).order_by(SubscriptionPlan.id)
+        ).all()
+    ]
+
+
+@router.post("/subscription-plans", status_code=201)
+def create_plan(
+    body: PlanIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    plan = SubscriptionPlan(**body.model_dump())
+    session.add(plan)
+    session.flush()
+    return {
+        "id": plan.id, "name": plan.name, "interval": plan.interval,
+        "proration_policy": plan.proration_policy,
+        "cancellation_policy": plan.cancellation_policy,
+    }

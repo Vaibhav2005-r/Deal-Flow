@@ -33,6 +33,35 @@ export default function QuoteBuilder() {
   const [productId, setProductId] = useState<number | null>(null);
   const [qty, setQty] = useState(1);
   const [discount, setDiscount] = useState("18");
+  const [orderDiscount, setOrderDiscount] = useState<string>("");
+
+  /**
+   * Order margin, from the same net and cost figures the engine uses.
+   * Null when the quote has no lines yet -- an indicator reading 0% on an
+   * empty quote looks like a loss-making deal rather than an absent one.
+   */
+  const orderMargin: number | null = (() => {
+    if (!quote?.lines?.length) return null;
+    const net = quote.lines.reduce((n, l) => n + Number(l.net_value), 0);
+    if (net <= 0) return null;
+    const cost = quote.lines.reduce((n, l) => {
+      const m = l.margin_pct === null ? null : Number(l.margin_pct);
+      const lineNet = Number(l.net_value);
+      return n + (m === null ? 0 : lineNet * (1 - m / 100));
+    }, 0);
+    return ((net - cost) / net) * 100;
+  })();
+
+  async function applyOrderDiscount() {
+    if (!quote || orderDiscount === "") return;
+    await run(async () => {
+      const updated = await api.post<Quote>(
+        `/api/quotes/${quote.id}/order-discount`,
+        { discount_pct: orderDiscount },
+      );
+      setQuote(updated);
+    });
+  }
 
   useEffect(() => {
     Promise.all([
@@ -497,12 +526,56 @@ export default function QuoteBuilder() {
             lines={quote.lines}
             onDelete={isEditable ? removeLine : undefined}
           />
+          {/* §B3: one discount across every line, plus a live margin
+              indicator beside the total. The order discount is written onto
+              the LINES rather than stored separately -- an order-level field
+              would be invisible to the BDRS engine, which scores lines, so a
+              rep could set 30% against a 10% ceiling and still score zero. */}
+          {isEditable && quote.lines.length > 0 && (
+            <div className="flex flex-wrap items-end gap-3 mt-4 pt-3 border-t border-slate-100">
+              <label className="text-sm">
+                <span className="block text-slate-600 mb-1">Order-level discount %</span>
+                <input
+                  type="number" min={0} max={100} step="0.5"
+                  value={orderDiscount}
+                  data-testid="order-discount"
+                  onChange={(e) => setOrderDiscount(e.target.value)}
+                  className="border border-slate-300 rounded px-2 py-1.5 text-sm w-28"
+                />
+              </label>
+              <button
+                onClick={applyOrderDiscount}
+                data-testid="apply-order-discount"
+                disabled={orderDiscount === ""}
+                className="bg-slate-700 text-white rounded px-3 py-1.5 text-sm font-medium disabled:opacity-40"
+              >
+                Apply to all lines
+              </button>
+              <p className="text-xs text-slate-500">
+                Applies to every line, then re-scores -- the same ceilings and chain apply.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
             <div>
               <p className="text-sm text-slate-600">
                 Net total{" "}
                 <span className="font-semibold text-slate-900 tabular-nums">
                   ₹{new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
+                </span>
+                <span className="text-slate-400"> · </span>
+                Order margin{" "}
+                <span
+                  data-testid="order-margin"
+                  className={`font-semibold tabular-nums ${
+                    orderMargin === null ? "text-slate-400"
+                    : orderMargin < 15 ? "text-red-700"
+                    : orderMargin < 25 ? "text-amber-700"
+                    : "text-emerald-700"
+                  }`}
+                >
+                  {orderMargin === null ? "—" : `${orderMargin.toFixed(1)}%`}
                 </span>
               </p>
               {quote.state !== "DRAFT" && (

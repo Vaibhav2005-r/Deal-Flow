@@ -80,6 +80,26 @@ def remove_line(session: Session, line: QuoteLine) -> None:
     session.delete(line)
 
 
+def apply_order_discount(
+    session: Session, quotation: Quotation, discount_pct: Decimal
+) -> int:
+    """§B3: apply one discount across every line on the order.
+
+    Deliberately expressed as a per-line edit rather than a new order-level
+    field. §13 forbids a single order-level threshold replacing per-line
+    ceilings, and the BDRS engine scores lines — an order-level discount stored
+    separately would be invisible to it, so a rep could set 30% at order level
+    against a 10% ceiling and score zero. Writing it onto the lines means the
+    ceilings, the blended score and the approval chain all see it.
+    """
+    lines = session.scalars(
+        select(QuoteLine).where(QuoteLine.quotation_id == quotation.id)
+    ).all()
+    for line in lines:
+        line.discount_pct = Decimal(discount_pct)
+    return len(lines)
+
+
 #: Rows representing LIVE authority over the current commercial terms. An edit
 #: invalidates both: a PENDING step was queued against the old score, and an
 #: APPROVED step granted authority for terms that no longer exist. §7 says
@@ -165,6 +185,16 @@ def mutate_lines(
         # A DRAFT has no approvals to void and no score to invalidate. §7's
         # transition table says DRAFT leaves DRAFT only via `confirm`, so
         # scoring here would move the quote out of DRAFT behind the rep's back.
+        #
+        # Resolve the ceilings anyway, without scoring. They are a property of
+        # the line's product and the customer's tier, not of the score — and
+        # leaving them null until confirm meant the builder showed "—" in the
+        # Ceiling column and reported no breach on a line that plainly breached
+        # one. The rep should see that while they are still editing.
+        from app.services.snapshots import persist_resolved_ceilings
+
+        persist_resolved_ceilings(session, build_snapshot(quotation))
+        session.flush()
         return (quotation.risk_score or Decimal(0)), []
 
     void_approvals(session, quotation.id)
