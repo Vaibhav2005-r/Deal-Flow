@@ -55,15 +55,15 @@ export default function InternalRouter() {
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col font-sans antialiased">
       {/* Top Enterprise Header */}
-      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-40 shadow-2xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+      <header className="bg-white border-b border-slate-200/90 sticky top-0 z-40 shadow-2xs w-full">
+        <div className="w-full px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           {/* Brand */}
           <div className="flex items-center gap-3 shrink-0">
             <DealFlowLogo size={28} />
           </div>
 
           {/* Center Navigation for Desktop */}
-          <nav className="hidden lg:flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
+          <nav className="hidden md:flex items-center justify-center gap-1 sm:gap-1.5 flex-1 max-w-4xl mx-auto overflow-x-auto no-scrollbar py-1">
             {/* 1. Home (FinanceHome for Finance, Dashboard for Rep/Manager) */}
             <NavLink to="/" end className={tab}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -169,7 +169,7 @@ export default function InternalRouter() {
           </nav>
 
           {/* Right: User Profile & Actions */}
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0 z-10">
             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-xs font-semibold text-slate-800" data-testid="whoami">
@@ -200,7 +200,7 @@ export default function InternalRouter() {
             <button
               type="button"
               onClick={() => setMobileNavOpen(!mobileNavOpen)}
-              className="lg:hidden p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200"
+              className="md:hidden p-1.5 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200"
               aria-label="Toggle Navigation"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -216,7 +216,7 @@ export default function InternalRouter() {
 
         {/* Mobile Nav Drawer */}
         {mobileNavOpen && (
-          <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-lg space-y-1">
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 shadow-lg space-y-1">
             <div className="sm:hidden flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
               <span className="text-xs font-semibold text-slate-800">{user?.full_name ?? "User"}</span>
               <span

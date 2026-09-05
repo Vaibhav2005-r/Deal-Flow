@@ -146,11 +146,11 @@ export default function FinanceHome() {
       {/* 1. Header with Status Controls */}
       <motion.div
         variants={itemAnim}
-        className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-xl p-5 shadow-2xs"
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-2xl p-5 sm:p-6 shadow-2xs"
       >
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               Finance & Operations Overview
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
@@ -172,7 +172,7 @@ export default function FinanceHome() {
             type="button"
             onClick={loadAllData}
             disabled={loading}
-            className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer shadow-2xs"
             title="Refresh Financial Data"
           >
             <svg
@@ -187,23 +187,23 @@ export default function FinanceHome() {
         </div>
       </motion.div>
 
-      {/* 2. Top 4 Primary Financial KPI Cards */}
+      {/* 2. Top 4 Primary Financial KPI Cards (Centralized) */}
       <motion.div variants={itemAnim} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Quotation Value */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Total Quotation Value</span>
-            <span className="p-1 bg-blue-50 text-[#1d72f2] rounded-md">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col items-center justify-center text-center group">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-600 mb-2">
+            <span className="p-1.5 bg-blue-50 text-[#1d72f2] rounded-lg group-hover:scale-105 transition-transform">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </span>
+            <span className="font-bold text-slate-700">Total Quotation Value</span>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <div className="text-3xl font-black text-slate-900 tracking-tight my-1">
             {formatLakhs(displayQuotationValue)}
           </div>
-          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-semibold">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-emerald-700 font-semibold bg-emerald-50/80 border border-emerald-200/70 px-2.5 py-0.5 rounded-full">
+            <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18" />
             </svg>
             <span>+14.8% vs last month</span>
@@ -211,57 +211,57 @@ export default function FinanceHome() {
         </div>
 
         {/* Pending Approvals */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Pending Approvals</span>
-            <span className="p-1 bg-amber-50 text-amber-600 rounded-md">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col items-center justify-center text-center group">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-600 mb-2">
+            <span className="p-1.5 bg-amber-50 text-amber-600 rounded-lg group-hover:scale-105 transition-transform">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </span>
+            <span className="font-bold text-slate-700">Pending Approvals</span>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <div className="text-3xl font-black text-slate-900 tracking-tight my-1">
             {displayPendingApprovals}
           </div>
-          <div className="mt-2 text-[11px] text-amber-700 font-medium flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          <div className="flex items-center justify-center gap-1 mt-2 text-[11px] text-amber-800 font-medium bg-amber-50/80 border border-amber-200/70 px-2.5 py-0.5 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             <span>Awaiting Finance & Manager signoff</span>
           </div>
         </div>
 
         {/* Outstanding Invoices */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Outstanding Invoices</span>
-            <span className="p-1 bg-rose-50 text-rose-600 rounded-md">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col items-center justify-center text-center group">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-600 mb-2">
+            <span className="p-1.5 bg-rose-50 text-rose-600 rounded-lg group-hover:scale-105 transition-transform">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </span>
+            <span className="font-bold text-slate-700">Outstanding Invoices</span>
           </div>
-          <div className="text-2xl font-extrabold text-rose-600 tracking-tight">
+          <div className="text-3xl font-black text-rose-600 tracking-tight my-1">
             {formatLakhs(displayOutstandingAmount)}
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 font-medium">
-            <span className="font-semibold text-slate-700">{pendingInvoices.length || 18}</span> invoices due for collection
+          <div className="mt-2 text-[11px] text-slate-600 font-medium bg-rose-50/80 border border-rose-200/70 px-2.5 py-0.5 rounded-full">
+            <span className="font-bold text-slate-800">{pendingInvoices.length || 18}</span> invoices due for collection
           </div>
         </div>
 
         {/* Active Subscriptions */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Active Subscriptions</span>
-            <span className="p-1 bg-emerald-50 text-emerald-600 rounded-md">
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs hover:shadow-xs transition-all flex flex-col items-center justify-center text-center group">
+          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-600 mb-2">
+            <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg group-hover:scale-105 transition-transform">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </span>
+            <span className="font-bold text-slate-700">Active Subscriptions</span>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+          <div className="text-3xl font-black text-slate-900 tracking-tight my-1">
             {displayActiveSubs}
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 font-medium">
-            MRR: <span className="font-semibold text-slate-700">{formatLakhs(mrr > 0 ? mrr : 1420000)}</span> / month
+          <div className="mt-2 text-[11px] text-slate-600 font-medium bg-emerald-50/80 border border-emerald-200/70 px-2.5 py-0.5 rounded-full">
+            MRR: <span className="font-bold text-slate-800">{formatLakhs(mrr > 0 ? mrr : 1420000)}</span> / month
           </div>
         </div>
       </motion.div>
