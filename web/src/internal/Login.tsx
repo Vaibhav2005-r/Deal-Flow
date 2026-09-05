@@ -1,20 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
-const DEMO = [
-  { email: "priya.raghavan@dealflow.example", label: "Priya Raghavan · rep", role: "rep" },
-  { email: "daniel.okafor@dealflow.example", label: "Daniel Okafor · rep", role: "rep" },
-  { email: "sofia.marchetti@dealflow.example", label: "Sofia Marchetti · rep", role: "rep" },
-  { email: "james.whitfield@dealflow.example", label: "James Whitfield · manager", role: "manager" },
-  { email: "aisha.karim@dealflow.example", label: "Aisha Karim · finance", role: "finance" },
-  { email: "root@dealflow.example", label: "System Administrator · admin", role: "admin" },
+interface ProfileItem {
+  id?: number;
+  email: string;
+  label: string;
+  role: string;
+  is_demo?: boolean;
+}
+
+const DEMO: ProfileItem[] = [
+  { email: "priya.raghavan@dealflow.example", label: "Priya Raghavan · rep", role: "rep", is_demo: true },
+  { email: "daniel.okafor@dealflow.example", label: "Daniel Okafor · rep", role: "rep", is_demo: true },
+  { email: "sofia.marchetti@dealflow.example", label: "Sofia Marchetti · rep", role: "rep", is_demo: true },
+  { email: "james.whitfield@dealflow.example", label: "James Whitfield · manager", role: "manager", is_demo: true },
+  { email: "aisha.karim@dealflow.example", label: "Aisha Karim · finance", role: "finance", is_demo: true },
+  { email: "root@dealflow.example", label: "System Administrator · admin", role: "admin", is_demo: true },
 ];
 
 type Mode = "login" | "signup";
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [mode, setMode] = useState<Mode>("login");
+  const [profiles, setProfiles] = useState<ProfileItem[]>(DEMO);
   const [email, setEmail] = useState(DEMO[0].email);
   const [loginPassword, setLoginPassword] = useState(DEMO[0].email);
   const [signupEmail, setSignupEmail] = useState("");
@@ -23,10 +32,28 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  function selectDemoUser(demoEmail: string) {
-    setEmail(demoEmail);
-    // Seeded accounts use their email address as their default password
-    setLoginPassword(demoEmail);
+  useEffect(() => {
+    api.get<ProfileItem[]>("/api/auth/profiles")
+      .then((data) => {
+        if (Array.isArray(data) && data.length > 0) {
+          setProfiles(data);
+        }
+      })
+      .catch(() => {
+        // Fallback to static DEMO list if API is unreachable
+      });
+  }, [mode]);
+
+  function selectProfile(selectedEmail: string) {
+    setEmail(selectedEmail);
+    const matched = profiles.find((p) => p.email === selectedEmail);
+    const isDemo = matched?.is_demo ?? selectedEmail.endsWith("@dealflow.example");
+    if (isDemo) {
+      // Seeded accounts use their email address as their default password
+      setLoginPassword(selectedEmail);
+    } else {
+      setLoginPassword("");
+    }
   }
 
   function accept(res: { token: string; role: string; full_name: string; user_id: number }) {
@@ -135,13 +162,13 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           ))}
         </div>
 
-        <label className="block text-sm font-medium text-slate-700 mb-1">Quick demo profile</label>
+        <label className="block text-sm font-medium text-slate-700 mb-1">Quick profile switcher</label>
         <select
           value={email}
-          onChange={(e) => selectDemoUser(e.target.value)}
+          onChange={(e) => selectProfile(e.target.value)}
           className="w-full border border-slate-300 rounded px-3 py-2 mb-4 text-sm bg-slate-50 font-medium"
         >
-          {DEMO.map((d) => (
+          {profiles.map((d) => (
             <option key={d.email} value={d.email}>{d.label}</option>
           ))}
         </select>

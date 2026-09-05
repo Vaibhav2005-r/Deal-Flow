@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    check_quote_ownership,
     current_internal_user,
     endpoint_name,
     get_session,
@@ -25,7 +26,6 @@ from app.api.deps import (
 from app.models.enums import QuoteState, Role
 from app.models.tables import (
     CreditNote,
-    QuoteLine,
     FulfillmentLine,
     FulfillmentPlan,
     Invoice,
@@ -98,6 +98,7 @@ def send_to_portal(
     user: User = Depends(current_internal_user),
 ) -> dict:
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     state = fire(session, quote, Event.SEND_TO_PORTAL, actor_id=user.id)
     return {"quotation_id": quote.id, "state": str(state)}
 
@@ -106,7 +107,7 @@ def send_to_portal(
 def customer_confirm(
     quote_id: int,
     session: Session = Depends(get_session),
-    user: User = Depends(current_internal_user),
+    user: User = Depends(require_roles(Role.MANAGER, Role.FINANCE, Role.ADMIN)),
 ) -> dict:
     """Phase 5 moves this to the portal; kept here so the chain is completable."""
     quote = _load(session, quote_id)
@@ -120,7 +121,7 @@ def plan_fulfillment(
     request: Request,
     response: Response,
     session: Session = Depends(get_session),
-    user: User = Depends(current_internal_user),
+    user: User = Depends(require_roles(Role.MANAGER, Role.FINANCE, Role.ADMIN)),
     key: str | None = Depends(idempotency_key),
 ) -> dict:
     endpoint = endpoint_name(request)
@@ -197,7 +198,7 @@ def generate_invoices(
     response: Response,
     as_of: date | None = None,
     session: Session = Depends(get_session),
-    user: User = Depends(current_internal_user),
+    user: User = Depends(require_roles(Role.FINANCE, Role.ADMIN)),
     key: str | None = Depends(idempotency_key),
 ) -> dict:
     endpoint = endpoint_name(request)
@@ -291,7 +292,7 @@ def override_fulfillment(
     quote_id: int,
     body: OverrideIn,
     session: Session = Depends(get_session),
-    user: User = Depends(current_internal_user),
+    user: User = Depends(require_roles(Role.MANAGER, Role.ADMIN)),
 ) -> dict:
     """Screen 8's "manual override" — replace the optimizer's split.
 

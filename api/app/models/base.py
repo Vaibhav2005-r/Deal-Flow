@@ -48,6 +48,6 @@ class PKMixin:
 
 
 class Entity(Base, PKMixin, TimestampMixin):
-    """Every table gets id BIGSERIAL, created_at, updated_at (§6)."""
+    """Every table gets id BIGINT AUTO_INCREMENT, created_at, updated_at (§6)."""
 
     __abstract__ = True
