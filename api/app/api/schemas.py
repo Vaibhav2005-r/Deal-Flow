@@ -13,6 +13,14 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str | None = None
+    role: str = "rep"
+
+
+
 class TokenResponse(BaseModel):
     token: str
     scope: str

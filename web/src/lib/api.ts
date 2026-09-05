@@ -2,7 +2,7 @@
 
 import { type Scope, tokenFor } from "./auth";
 
-const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const BASE = import.meta.env.VITE_API_BASE ?? "";
 
 export class ApiError extends Error {
   constructor(public status: number, public detail: string) {

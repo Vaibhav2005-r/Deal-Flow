@@ -16,3 +16,9 @@ build/
 .vscode/
 *.tsbuildinfo
 dealflow_backup_*
+*.final-backup.tsx
+pg_data/
+pgsql/
+pgsql.zip
+pg.log
+

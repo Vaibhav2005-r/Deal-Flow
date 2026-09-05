@@ -27,6 +27,9 @@ export function setToken(scope: Scope, token: string): void {
 
 export function clearToken(scope: Scope): void {
   localStorage.removeItem(KEY[scope]);
+  if (scope === "internal") {
+    localStorage.removeItem("df360.internal.user");
+  }
 }
 
 export function hasScope(scope: Scope): boolean {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
@@ -25,11 +26,13 @@ interface PortalLoginProps {
 }
 
 export default function PortalLogin({ onLogin }: PortalLoginProps) {
-  const [selectedDemo, setSelectedDemo] = useState(0);
-  const [email, setEmail] = useState(DEMO_PORTAL_USERS[0].email);
-  const [password, setPassword] = useState(DEMO_PORTAL_USERS[0].password);
+  const [selectedDemo, setSelectedDemo] = useState<number | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const shouldReduceMotion = useReducedMotion();
 
   function handleSelectDemo(index: number) {
     setSelectedDemo(index);
@@ -66,9 +69,14 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md border border-slate-200">
+      <motion.div
+        initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: "spring", damping: 25, stiffness: 240 }}
+        className="bg-white p-8 rounded-xl shadow-md w-full max-w-md border border-slate-200"
+      >
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-lg">
+          <div className="w-10 h-10 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-xs">
             DF
           </div>
           <div>
@@ -88,10 +96,15 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
             Quick Select Demo Customer
           </label>
           <select
-            value={selectedDemo}
-            onChange={(e) => handleSelectDemo(Number(e.target.value))}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800"
+            value={selectedDemo ?? ""}
+            onChange={(e) => {
+              if (e.target.value !== "") {
+                handleSelectDemo(Number(e.target.value));
+              }
+            }}
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 transition-colors"
           >
+            <option value="" disabled>Select customer...</option>
             {DEMO_PORTAL_USERS.map((d, i) => (
               <option key={d.email} value={i}>
                 {d.label}
@@ -110,7 +123,7 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs focus:shadow-xs transition-all duration-200"
             />
           </div>
 
@@ -123,23 +136,33 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-2xs focus:shadow-xs transition-all duration-200"
             />
           </div>
 
-          {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
-              {error}
-            </div>
-          )}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, x: [0, -4, 4, -3, 3, 0] }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.3 }}
+                className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700"
+              >
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <button
+          <motion.button
             type="submit"
             disabled={busy}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm"
+            whileHover={shouldReduceMotion || busy ? {} : { scale: 1.01 }}
+            whileTap={shouldReduceMotion || busy ? {} : { scale: 0.99 }}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 shadow-sm cursor-pointer"
           >
             {busy ? "Signing in…" : "Sign In to Portal"}
-          </button>
+          </motion.button>
         </form>
 
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
@@ -147,7 +170,7 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
             Secure Portal Session · Scope: portal
           </span>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

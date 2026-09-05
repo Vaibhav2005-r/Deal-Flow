@@ -51,7 +51,13 @@ def decode_token(token: str) -> dict:
     return json.loads(payload)
 
 
+def hash_password(password: str) -> str:
+    """Generates password hash matching the project authentication scheme."""
+    return "seed$" + hashlib.sha256(f"demo::{password}".encode()).hexdigest()
+
+
 def verify_password(password: str, password_hash: str) -> bool:
     """Matches the seed's placeholder scheme. Constant-time compare."""
-    expected = "seed$" + hashlib.sha256(f"demo::{password}".encode()).hexdigest()
+    expected = hash_password(password)
     return hmac.compare_digest(expected, password_hash)
+
