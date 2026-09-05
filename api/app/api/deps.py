@@ -81,6 +81,30 @@ def require_roles(*roles: Role):
 
 
 # --------------------------------------------------------------------------
+# ownership (§1): REPs may only act on their own quotes
+# --------------------------------------------------------------------------
+
+ELEVATED_ROLES = {Role.MANAGER, Role.FINANCE, Role.ADMIN}
+
+
+def check_quote_ownership(
+    user: User, quotation: "Quotation",  # noqa: F821 — avoids circular import
+) -> None:
+    """Raise 403 if a REP tries to access another REP's quotation.
+
+    MANAGER, FINANCE and ADMIN may access any quotation — they need to
+    for approvals, fulfillment and billing.  A REP sees only their own.
+    """
+    if user.role in ELEVATED_ROLES:
+        return
+    if quotation.rep_id != user.id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"you may only access your own quotations",
+        )
+
+
+# --------------------------------------------------------------------------
 # idempotency (§8)
 # --------------------------------------------------------------------------
 
