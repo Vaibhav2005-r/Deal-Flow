@@ -147,8 +147,8 @@ def dashboard(
 @router.get("/fulfillment/stock")
 def stock_by_warehouse(
     response: Response,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     warehouse: str | None = None,
     low_only: bool = False,
     session: Session = Depends(get_session),
@@ -169,15 +169,22 @@ def stock_by_warehouse(
         select(func.count()).select_from(base_stmt.subquery())
     ) or 0
 
-    offset = (page - 1) * page_size
-    stmt = base_stmt.order_by(Warehouse.code, Product.sku).offset(offset).limit(page_size)
-    rows = session.execute(stmt).all()
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Warehouse.code, Product.sku).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Warehouse.code, Product.sku)
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
 
-    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    response.headers["X-Total-Pages"] = str(total_pages)
+    rows = session.execute(stmt).all()
 
     return [
         {
@@ -201,8 +208,8 @@ def stock_by_warehouse(
 @router.get("/fulfillment/pending")
 def orders_pending_fulfillment(
     response: Response,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
@@ -215,15 +222,22 @@ def orders_pending_fulfillment(
         select(func.count()).select_from(base_stmt.subquery())
     ) or 0
 
-    offset = (page - 1) * page_size
-    stmt = base_stmt.order_by(Quotation.id.desc()).offset(offset).limit(page_size)
-    quotes = session.scalars(stmt).all()
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Quotation.id.desc()).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Quotation.id.desc())
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
 
-    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    response.headers["X-Total-Pages"] = str(total_pages)
+    quotes = session.scalars(stmt).all()
 
     out = []
     for q in quotes:
@@ -377,8 +391,8 @@ def _invoice_row(session: Session, inv: Invoice) -> dict:
 @router.get("/invoices")
 def list_invoices(
     response: Response,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     status: str | None = Query(default=None, pattern="^(paid|unpaid)$"),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
@@ -394,15 +408,22 @@ def list_invoices(
         select(func.count()).select_from(base_stmt.subquery())
     ) or 0
 
-    offset = (page - 1) * page_size
-    stmt = base_stmt.order_by(Invoice.id.desc()).offset(offset).limit(page_size)
-    invoices = session.scalars(stmt).all()
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Invoice.id.desc()).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Invoice.id.desc())
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
 
-    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    response.headers["X-Total-Pages"] = str(total_pages)
+    invoices = session.scalars(stmt).all()
 
     return [_invoice_row(session, inv) for inv in invoices]
 

@@ -51,8 +51,8 @@ import math
 @router.get("/deal-health")
 def list_deal_health(
     response: Response,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=100, ge=1, le=500),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
     alerts_only: bool = False,
     session: Session = Depends(get_session),
     user: User = Depends(current_internal_user),
@@ -63,14 +63,20 @@ def list_deal_health(
         all_deals = [d for d in all_deals if d.get("alert")]
 
     total_count = len(all_deals)
-    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    response.headers["X-Total-Pages"] = str(total_pages)
+    if page is not None and page_size is not None:
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+        offset = (page - 1) * page_size
+        return all_deals[offset : offset + page_size]
 
-    offset = (page - 1) * page_size
-    return all_deals[offset : offset + page_size]
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = "1"
+    response.headers["X-Page-Size"] = str(total_count)
+    response.headers["X-Total-Pages"] = "1"
+    return all_deals
 
 
 @router.get("/quotes/{quote_id}/health")

@@ -94,8 +94,8 @@ def catalog_summary(
 @router.get("/products")
 def list_products(
     response: Response,
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     category: str | None = None,
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
@@ -105,15 +105,22 @@ def list_products(
         base_stmt = base_stmt.where(Product.category == category)
     total_count = session.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
 
-    offset = (page - 1) * page_size
-    stmt = base_stmt.order_by(Product.category, Product.name).offset(offset).limit(page_size)
-    rows = session.scalars(stmt).all()
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Product.category, Product.name).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Product.category, Product.name)
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
 
-    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
-    response.headers["X-Total-Count"] = str(total_count)
-    response.headers["X-Page"] = str(page)
-    response.headers["X-Page-Size"] = str(page_size)
-    response.headers["X-Total-Pages"] = str(total_pages)
+    rows = session.scalars(stmt).all()
 
     if not rows:
         return []

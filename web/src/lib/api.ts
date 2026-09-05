@@ -172,8 +172,6 @@ export interface Score {
   explanation: string[];
   verifier_verdict: string;
   verifier_reasons: string[];
-  concession?: number;
-  concession_review?: boolean;
 }
 
 export interface Customer {
