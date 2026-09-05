@@ -50,6 +50,8 @@ from app.models.tables import (
 )
 
 DEFAULT_LARGE_ORDER_THRESHOLD = Decimal("500000")
+DEFAULT_CONCESSION_REVIEW = Decimal("250000")
+DEFAULT_CONCESSION_FINANCE = Decimal("1000000")
 
 
 class PolicyResolutionError(DomainError):
@@ -141,6 +143,12 @@ def build_governance_snapshot(
         rep_discount_robust_z=rep_discount_robust_z,
         large_order_threshold=_config(
             session, "large_order_threshold", DEFAULT_LARGE_ORDER_THRESHOLD
+        ),
+        concession_review_threshold=_config(
+            session, "concession_review_threshold", DEFAULT_CONCESSION_REVIEW
+        ),
+        concession_finance_threshold=_config(
+            session, "concession_finance_threshold", DEFAULT_CONCESSION_FINANCE
         ),
         lines=snapshot_lines,
     )

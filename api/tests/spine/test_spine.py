@@ -239,7 +239,7 @@ def test_every_scoring_call_left_a_decision_log_row(client, rep, session):
         select(DecisionLog).where(DecisionLog.quotation_id == quote["id"])
     ).one()
     assert row.agent == "governance"
-    assert row.engine_version == "governance/1.0.0"
+    assert row.engine_version == "governance/1.1.0"
     assert row.verifier_verdict == "PASS"
     assert row.input_json["lines"], "full snapshot must be logged for replay"
     assert row.latency_ms >= 0

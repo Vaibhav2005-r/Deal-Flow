@@ -333,6 +333,19 @@ export default function QuoteBuilder() {
                 HARD STOP
               </span>
             )}
+            {/* Without this a manager sees "BDRS 3.0 → SALES_MANAGER" and
+                reasonably assumes the router is broken. The score is low
+                because nothing breached a ceiling; the review is required
+                because of how much the order gives away. */}
+            {score.concession_review && (
+              <span
+                data-testid="concession-badge"
+                className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-0.5 rounded"
+                title="Every line is within its ceiling, so the score is low — but the order concedes enough value to need a human"
+              >
+                VALUE REVIEW · {new Intl.NumberFormat("en-IN").format(score.concession)} conceded
+              </span>
+            )}
             <span className="text-xs text-slate-500">verifier {score.verifier_verdict}</span>
           </div>
           <p className="text-sm mb-3" data-testid="chain">

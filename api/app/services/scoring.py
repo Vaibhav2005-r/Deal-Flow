@@ -109,6 +109,8 @@ def score_quotation(
         score=decision.output["score"],
         approval_chain=chain,
         hard_stop=decision.output["hard_stop"],
+        concession_review=decision.output.get("concession_review", False),
+        concession=decision.output.get("concession", 0.0),
         components=decision.output["components"],
         aggregates=decision.output["aggregates"],
         explanation=decision.explanation,

@@ -102,19 +102,54 @@ def verify_governance(
                 f"source — ceiling may have been defaulted, not looked up"
             )
 
-    # --- 3. routing monotone in score -------------------------------------
+    # --- 3. routing consistent with score AND concession -------------------
+    #
+    # Recomputed here rather than read from the agent's output: a verifier that
+    # trusts the number it is checking verifies nothing.
+    conceded = sum(
+        (
+            ln.list_value - (ln.list_value - ln.list_value * ln.discount_pct / Decimal(100))
+            for ln in snapshot.lines
+        ),
+        Decimal(0),
+    )
+    review_at = snapshot.concession_review_threshold
+    finance_at = snapshot.concession_finance_threshold
+
     chain = decision.output.get("approval_chain", [])
     hard_stop = decision.output.get("hard_stop", False)
-    if not hard_stop:
-        if actual is not None:
-            if actual < 20.0 and chain:
-                reasons.append(f"score {actual} < 20 must auto-approve, got {chain}")
-            elif 20.0 <= actual < 50.0 and chain != ["SALES_MANAGER"]:
-                reasons.append(f"score {actual} must route to manager only, got {chain}")
-            elif actual >= 50.0 and chain != ["SALES_MANAGER", "FINANCE"]:
-                reasons.append(f"score {actual} must route to finance, got {chain}")
-    elif chain != ["SALES_MANAGER", "FINANCE"]:
-        reasons.append(f"hard stop must route to finance, got {chain}")
+
+    if hard_stop:
+        if chain != ["SALES_MANAGER", "FINANCE"]:
+            reasons.append(f"hard stop must route to finance, got {chain}")
+    elif actual is not None:
+        # what the score alone demands
+        if actual < 20.0:
+            expected = []
+        elif actual < 50.0:
+            expected = ["SALES_MANAGER"]
+        else:
+            expected = ["SALES_MANAGER", "FINANCE"]
+
+        # concession may only ADD oversight, never remove it
+        if conceded > finance_at:
+            expected = ["SALES_MANAGER", "FINANCE"]
+        elif conceded > review_at and not expected:
+            expected = ["SALES_MANAGER"]
+
+        if chain != expected:
+            reasons.append(
+                f"score {actual} with concession {conceded} requires {expected}, "
+                f"got {chain}"
+            )
+        if len(chain) < len(
+            [] if actual < 20.0 else
+            ["SALES_MANAGER"] if actual < 50.0 else
+            ["SALES_MANAGER", "FINANCE"]
+        ):
+            reasons.append(
+                f"routing weakened below what score {actual} alone requires"
+            )
 
     verdict = VerifierVerdict.PASS if not reasons else VerifierVerdict.FAIL
     return verdict, reasons

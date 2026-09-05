@@ -17,6 +17,12 @@ from tests.spine.conftest import auth
 from tests.spine.test_spine import _gold_customer, _product
 
 
+def _finance_login(client) -> dict:
+    from tests.spine.conftest import login
+
+    return login(client, "aisha.karim@dealflow.example")
+
+
 def drive_to_confirmed(client, rep, manager, lines: list[dict]) -> int:
     """Walk a quote all the way to CONFIRMED (§7)."""
     token = rep["token"]
@@ -25,9 +31,21 @@ def drive_to_confirmed(client, rep, manager, lines: list[dict]) -> int:
         "customer_id": customer["id"], "lines": lines,
     }).json()
 
-    score = client.post(f"/api/quotes/{quote['id']}/confirm", headers=auth(token)).json()
-    if score["approval_chain"]:
-        client.post(f"/api/quotes/{quote['id']}/approve", headers=auth(manager["token"]))
+    client.post(f"/api/quotes/{quote['id']}/confirm", headers=auth(token))
+
+    # Walk the WHOLE chain, not just the first step. A large order can now be
+    # routed to Finance as well as a manager on concession value alone, and a
+    # helper that approves once would leave it stuck in PENDING_FINANCE.
+    approvers = {"SALES_MANAGER": manager, "FINANCE": _finance_login(client)}
+    for _ in range(4):
+        detail = client.get(f"/api/quotes/{quote['id']}", headers=auth(token)).json()
+        stage = detail["current_stage"]
+        if stage is None:
+            break
+        client.post(
+            f"/api/quotes/{quote['id']}/approve",
+            headers=auth(approvers[stage]["token"]),
+        )
 
     client.post(f"/api/quotes/{quote['id']}/send-to-portal", headers=auth(token))
     res = client.post(f"/api/quotes/{quote['id']}/customer-confirm", headers=auth(token))

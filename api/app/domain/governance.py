@@ -18,7 +18,10 @@ from app.domain.types import (
     LineSnapshot,
 )
 
-ENGINE_VERSION = "governance/1.0.0"  # bump on ANY rule change
+#: Bumped from 1.0.0: routing now also considers the absolute value conceded
+#: (§4 — bump on ANY rule change). The SCORE formula is untouched, so every
+#: §10 golden value still holds; rows logged under 1.0.0 replay under 1.0.0.
+ENGINE_VERSION = "governance/1.1.0"
 
 # --- caps, in percentage points ------------------------------------------
 CAP_WORST = Decimal("10.0")
@@ -64,6 +67,30 @@ def _fmt1(d: Decimal) -> str:
 # --------------------------------------------------------------------------
 # aggregates
 # --------------------------------------------------------------------------
+
+
+def total_concession(lines: list[LineSnapshot]) -> Decimal:
+    """Absolute value given away across the order: Σ(list_value - net).
+
+    WHY THIS EXISTS. Every term in the score is a percentage: c1 and c2 measure
+    breach *over ceiling*, c3 measures shortfall *below floor margin*. None of
+    them can see how much money an order actually concedes, so an order that
+    sits exactly at ceiling on every line scores ~0 no matter how large it is —
+    and the bigger the order, the more value passes with no one looking.
+
+    The effect is inverted rather than merely absent. Ten lines at a 10%
+    ceiling concede 100,000 and score 3.0; one line 1pp over concedes 11,000
+    and scores 7.6. The order giving away nine times more is the one nobody
+    reviews.
+
+    This is deliberately NOT folded into the score. §10's expected values are
+    the contract, and this measures a different axis from policy breach: it
+    adjusts ROUTING only, the way the single-line hard stop already does.
+    It is also not "a single order-level discount threshold" replacing per-line
+    ceilings (§13's anti-pattern) — the ceilings still do all the scoring. This
+    catches what percentages structurally cannot.
+    """
+    return sum((ln.concession_value for ln in lines), Decimal(0))
 
 
 def worst_excess(lines: list[LineSnapshot]) -> Decimal:
@@ -149,15 +176,40 @@ def _hard_stop_lines(lines: list[LineSnapshot]) -> list[LineSnapshot]:
     ]
 
 
-def route(score: Decimal, lines: list[LineSnapshot]) -> list[str]:
-    """Approval chain for a score. Monotone non-decreasing in score."""
+MANAGER_ONLY = [ApproverRole.SALES_MANAGER.value]
+MANAGER_AND_FINANCE = [ApproverRole.SALES_MANAGER.value, ApproverRole.FINANCE.value]
+
+
+def route(
+    score: Decimal,
+    lines: list[LineSnapshot],
+    concession: Decimal | None = None,
+    review_threshold: Decimal | None = None,
+    finance_threshold: Decimal | None = None,
+) -> list[str]:
+    """Approval chain. Monotone non-decreasing in score AND in concession.
+
+    Concession may only ADD oversight, never remove it: a large giveaway can
+    escalate a quote that scored low, but a small giveaway can never rescue one
+    that scored high. Asserted in the golden tests.
+    """
     if _hard_stop_lines(lines):
-        return [ApproverRole.SALES_MANAGER.value, ApproverRole.FINANCE.value]
+        return MANAGER_AND_FINANCE
+
     if score < ROUTE_MANAGER_MIN:
-        return []
-    if score < ROUTE_FINANCE_MIN:
-        return [ApproverRole.SALES_MANAGER.value]
-    return [ApproverRole.SALES_MANAGER.value, ApproverRole.FINANCE.value]
+        chain = []
+    elif score < ROUTE_FINANCE_MIN:
+        chain = MANAGER_ONLY
+    else:
+        chain = MANAGER_AND_FINANCE
+
+    if concession is not None and review_threshold is not None:
+        if finance_threshold is not None and concession > finance_threshold:
+            chain = MANAGER_AND_FINANCE
+        elif concession > review_threshold and not chain:
+            chain = MANAGER_ONLY
+
+    return chain
 
 
 # --------------------------------------------------------------------------
@@ -186,10 +238,17 @@ def decide(snapshot: GovernanceSnapshot) -> Decision:
 
     # score is rounded once, from the *unrounded* components (§5.1)
     score = round(c1 + c2 + c3 + c4, 1)
-    chain = route(score, lines)
+
+    concession = total_concession(lines)
+    chain = route(
+        score, lines, concession,
+        snapshot.concession_review_threshold,
+        snapshot.concession_finance_threshold,
+    )
+    concession_review = bool(chain) and score < ROUTE_MANAGER_MIN
 
     explanation = _explain(snapshot, worst, leak, m_short, c1, c2, c3, c4,
-                           ctx_why, score, chain)
+                           ctx_why, score, chain, concession)
 
     output = {
         "score": float(score),
@@ -207,6 +266,10 @@ def decide(snapshot: GovernanceSnapshot) -> Decision:
             "context_points": float(round(ctx, 2)),
         },
         "hard_stop": bool(_hard_stop_lines(lines)),
+        "concession": float(round(concession, 2)),
+        #: True when approval is required by concession value alone — the score
+        #: on its own would have auto-approved this quote.
+        "concession_review": concession_review,
         "breaching_line_ids": [ln.line_id for ln in lines if ln.excess_pct > 0],
     }
 
@@ -219,7 +282,7 @@ def decide(snapshot: GovernanceSnapshot) -> Decision:
 
 
 def _explain(snapshot, worst, leak, m_short, c1, c2, c3, c4, ctx_why,
-             score, chain) -> list[str]:
+             score, chain, concession=Decimal(0)) -> list[str]:
     """Human-readable, per-line where applicable. §5.1."""
     out: list[str] = []
     lines = snapshot.lines
@@ -274,6 +337,21 @@ def _explain(snapshot, worst, leak, m_short, c1, c2, c3, c4, ctx_why,
             f"{_fmt(HARD_STOP_EXCESS_PP)}pp single-line limit or sits "
             f"{_fmt(HARD_STOP_MARGIN_BELOW_FLOOR_PP)}pp below floor margin "
             f"→ Finance regardless of score."
+        )
+
+    if concession > snapshot.concession_finance_threshold:
+        out.append(
+            f"Concession {_fmt1(concession)} exceeds the "
+            f"{_fmt1(snapshot.concession_finance_threshold)} finance limit — "
+            f"Finance must review the value given away, whatever the score."
+        )
+    elif concession > snapshot.concession_review_threshold:
+        out.append(
+            f"Concession {_fmt1(concession)} exceeds the "
+            f"{_fmt1(snapshot.concession_review_threshold)} review limit. "
+            f"Every line is within its ceiling, so the score is low — but the "
+            f"order still gives away this much, which no percentage-based "
+            f"term can see."
         )
 
     out.append(

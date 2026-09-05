@@ -110,6 +110,9 @@ class ScoreOut(BaseModel):
     score: float
     approval_chain: list[str]
     hard_stop: bool
+    #: approval required by value conceded alone — the score would have passed
+    concession_review: bool = False
+    concession: float = 0.0
     components: dict
     aggregates: dict
     explanation: list[str]
