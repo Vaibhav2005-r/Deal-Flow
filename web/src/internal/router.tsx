@@ -324,18 +324,6 @@ export default function InternalRouter() {
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                clearToken("internal");
-                setAuthed(false);
-              }}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors shadow-2xs cursor-pointer"
-              title="Sign out of your account"
-            >
-              Sign out
-            </button>
-
             {/* Mobile Menu Toggle Button */}
             <button
               type="button"
