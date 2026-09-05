@@ -22,30 +22,92 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.domain.governance import decide as governance_decide
-from app.domain.types import GovernanceSnapshot, VerifierVerdict
-from app.domain.verifiers import verify_governance
-from app.models.enums import ApprovalDecision, QuoteState, REQUIRES_RESCORE_ON_EDIT
-from app.models.tables import ApprovalRequest, Quotation
-from app.services.decision_log import run_agent
+from app.domain.types import GovernanceSnapshot
+from app.models.enums import ApprovalDecision, REQUIRES_RESCORE_ON_EDIT
+from app.models.tables import ApprovalRequest, Product, Quotation, QuoteLine
 
 
 class ConcurrencyError(Exception):
     """quotation.version mismatch — the caller should return HTTP 409 (§8)."""
 
 
+# --------------------------------------------------------------------------
+# line primitives
+#
+# These live HERE, not in the router, so that no other module ever constructs,
+# edits or deletes a QuoteLine.  That keeps the §7 guarantee checkable by
+# inspection: `tests/unit/test_rescore_invariant.py` asserts no module outside
+# this one touches a line, and a router that cannot touch a line cannot bypass
+# the re-score.  It also keeps routers thin (§12).
+# --------------------------------------------------------------------------
+
+
+def append_line(
+    session: Session,
+    quotation: Quotation,
+    product: Product,
+    qty: int,
+    discount_pct: Decimal,
+    unit_price: Decimal | None = None,
+) -> QuoteLine:
+    """Add a line. Unit price defaults to the product's list price."""
+    line = QuoteLine(
+        quotation_id=quotation.id,
+        product_id=product.id,
+        qty=qty,
+        unit_price=unit_price if unit_price is not None else product.list_price,
+        discount_pct=Decimal(discount_pct),
+        is_recurring=product.is_subscription,
+    )
+    session.add(line)
+    return line
+
+
+def apply_line_update(
+    line: QuoteLine,
+    qty: int | None = None,
+    discount_pct: Decimal | None = None,
+) -> QuoteLine:
+    """Edit the commercial terms of a line."""
+    if qty is not None:
+        line.qty = qty
+    if discount_pct is not None:
+        line.discount_pct = Decimal(discount_pct)
+    return line
+
+
+def remove_line(session: Session, line: QuoteLine) -> None:
+    session.delete(line)
+
+
+#: Rows representing LIVE authority over the current commercial terms. An edit
+#: invalidates both: a PENDING step was queued against the old score, and an
+#: APPROVED step granted authority for terms that no longer exist. §7 says
+#: "voids all existing approval_request rows" — leaving an APPROVED row intact
+#: would let an edited quote look approved against a score nobody computed.
+#: REJECTED / RETURNED / VOIDED_BY_EDIT rows belong to closed cycles and are
+#: history; they are never rewritten.
+LIVE_AUTHORITY = (ApprovalDecision.PENDING, ApprovalDecision.APPROVED)
+
+
 def void_approvals(session: Session, quotation_id: int) -> int:
-    """Void every non-terminal approval row for this quotation."""
+    """Void every row that still confers authority over this quotation."""
     rows = session.scalars(
         select(ApprovalRequest).where(
             ApprovalRequest.quotation_id == quotation_id,
-            ApprovalRequest.decision == ApprovalDecision.PENDING,
+            ApprovalRequest.decision.in_(LIVE_AUTHORITY),
         )
     ).all()
     now = datetime.now(timezone.utc)
     for row in rows:
         row.decision = ApprovalDecision.VOIDED_BY_EDIT
         row.decided_at = now
+
+    # Flush before returning. The session runs autoflush=False, so without this
+    # the next SELECT still reads these rows as PENDING — and the re-score's
+    # "clear out stale pending steps" pass would DELETE the very rows we just
+    # voided, erasing the audit trail the void exists to create.
+    session.flush()
     return len(rows)
 
 
@@ -55,43 +117,16 @@ def rescore(
     snapshot: GovernanceSnapshot,
     actor_id: int | None = None,
 ) -> tuple[Decimal, list[str]]:
-    """Re-run Governance and re-enter the approval chain. Returns (score, chain)."""
-    decision, verdict, reasons = run_agent(
-        session,
-        agent="governance",
-        decide=governance_decide,
-        snapshot=snapshot,
-        verifier=verify_governance,
-        quotation_id=quotation.id,
-        actor_id=actor_id,
-    )
+    """Re-run Governance and re-enter the approval chain.
 
-    score = Decimal(str(decision.output["score"]))
-    chain: list[str] = list(decision.output["approval_chain"])
+    Delegates to `services.scoring.score_quotation` so there is exactly ONE
+    scoring implementation shared with the confirm route.  Returns
+    (score, chain) for callers that only need the headline.
+    """
+    from app.services.scoring import score_quotation
 
-    # §8: on verifier FAIL, block the transition and escalate to Finance.
-    if verdict is VerifierVerdict.FAIL:
-        chain = ["SALES_MANAGER", "FINANCE"]
-
-    quotation.risk_score = score
-    quotation.risk_input_hash = decision.input_hash
-    quotation.state = QuoteState.RISK_SCORED
-
-    for idx, role in enumerate(chain):
-        session.add(
-            ApprovalRequest(
-                quotation_id=quotation.id,
-                step_index=idx,
-                approver_role=role,
-                decision=ApprovalDecision.PENDING,
-            )
-        )
-
-    # RISK_SCORED transitions on immediately (§7)
-    quotation.state = (
-        QuoteState.PENDING_MANAGER if chain else QuoteState.READY_TO_FULFILL
-    )
-    return score, chain
+    result = score_quotation(session, quotation, actor_id=actor_id, snapshot=snapshot)
+    return Decimal(str(result.score)), result.approval_chain
 
 
 def mutate_lines(
@@ -117,10 +152,20 @@ def mutate_lines(
     needs_rescore = quotation.state in REQUIRES_RESCORE_ON_EDIT
 
     mutate(quotation)
+    # Flush before the snapshot is built. The session runs with autoflush=False,
+    # so an added or deleted line would otherwise still be invisible/visible to
+    # build_snapshot's SELECT, and the re-score would run against the terms as
+    # they were BEFORE the edit — silently scoring the wrong quote.
+    session.flush()
+
     quotation.version += 1
     quotation.last_activity_at = datetime.now(timezone.utc)
 
-    if needs_rescore:
-        void_approvals(session, quotation.id)
+    if not needs_rescore:
+        # A DRAFT has no approvals to void and no score to invalidate. §7's
+        # transition table says DRAFT leaves DRAFT only via `confirm`, so
+        # scoring here would move the quote out of DRAFT behind the rep's back.
+        return (quotation.risk_score or Decimal(0)), []
 
+    void_approvals(session, quotation.id)
     return rescore(session, quotation, build_snapshot(quotation), actor_id)

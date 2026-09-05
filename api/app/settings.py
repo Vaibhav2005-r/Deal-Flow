@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     api_title: str = "DealFlow360"
     api_version: str = "0.1.0"
 
+    #: Signs bearer tokens. Override in any real deployment.
+    secret_key: str = "dev-only-not-a-production-secret"
+
+    #: Dev origins for the Vite client.
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
+
     # §9 — the one LLM call. Off by default; the template path is complete.
     narrator_enabled: bool = False
     narrator_timeout_ms: int = 800

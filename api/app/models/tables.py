@@ -10,7 +10,6 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -22,10 +21,9 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, Entity, Money, Percent
+from app.models.base import FK, PK, Base, Entity, JSONColumn, Money, Percent
 from app.models.enums import (
     ApprovalDecision,
     InvoiceKind,
@@ -57,7 +55,7 @@ class Customer(Entity):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     tier: Mapped[Tier] = mapped_column(String(20), nullable=False, default=Tier.BRONZE)
     user_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("user.id"), nullable=True
+        FK, ForeignKey("user.id"), nullable=True
     )
     #: drives the "new customer +3" context point (§5.1)
     first_order_at: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -73,7 +71,7 @@ class Product(Entity):
     unit_cost: Mapped[Decimal] = mapped_column(Money, nullable=False)
     is_subscription: Mapped[bool] = mapped_column(Boolean, default=False)
     plan_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("subscription_plan.id"), nullable=True
+        FK, ForeignKey("subscription_plan.id"), nullable=True
     )
     is_promoted: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -82,7 +80,7 @@ class ProductVariant(Entity):
     __tablename__ = "product_variant"
 
     product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     attribute: Mapped[str] = mapped_column(String(60), nullable=False)
     value: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -101,10 +99,10 @@ class PriceListItem(Entity):
     __table_args__ = (UniqueConstraint("price_list_id", "product_id"),)
 
     price_list_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("price_list.id"), nullable=False
+        FK, ForeignKey("price_list.id"), nullable=False
     )
     product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     price: Mapped[Decimal] = mapped_column(Money, nullable=False)
 
@@ -127,7 +125,7 @@ class ApprovalRule(Entity):
 
     min_score: Mapped[Decimal] = mapped_column(Percent, nullable=False)
     max_score: Mapped[Decimal] = mapped_column(Percent, nullable=False)
-    steps: Mapped[list] = mapped_column(JSONB, nullable=False)  # ordered role list
+    steps: Mapped[list] = mapped_column(JSONColumn, nullable=False)  # ordered role list
 
 
 class Warehouse(Entity):
@@ -144,10 +142,10 @@ class Stock(Entity):
     __table_args__ = (UniqueConstraint("warehouse_id", "product_id"),)
 
     warehouse_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("warehouse.id"), nullable=False
+        FK, ForeignKey("warehouse.id"), nullable=False
     )
     product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     qty_on_hand: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     qty_reserved: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -184,10 +182,10 @@ class Quotation(Entity):
     __tablename__ = "quotation"
 
     customer_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("customer.id"), nullable=False, index=True
+        FK, ForeignKey("customer.id"), nullable=False, index=True
     )
     rep_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("user.id"), nullable=False, index=True
+        FK, ForeignKey("user.id"), nullable=False, index=True
     )
     state: Mapped[QuoteState] = mapped_column(
         String(30), nullable=False, default=QuoteState.DRAFT, index=True
@@ -214,10 +212,10 @@ class QuoteLine(Entity):
     __tablename__ = "quote_line"
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     unit_price: Mapped[Decimal] = mapped_column(Money, nullable=False)
@@ -237,7 +235,7 @@ class ApprovalRequest(Entity):
     __tablename__ = "approval_request"
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     step_index: Mapped[int] = mapped_column(Integer, nullable=False)
     approver_role: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -246,7 +244,7 @@ class ApprovalRequest(Entity):
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     decided_by: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("user.id"), nullable=True
+        FK, ForeignKey("user.id"), nullable=True
     )
     decided_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -257,7 +255,7 @@ class FulfillmentPlan(Entity):
     __tablename__ = "fulfillment_plan"
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     total_cost: Mapped[Decimal] = mapped_column(Money, nullable=False)
     shipment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -267,14 +265,14 @@ class FulfillmentLine(Entity):
     __tablename__ = "fulfillment_line"
 
     plan_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("fulfillment_plan.id"), nullable=False, index=True
+        FK, ForeignKey("fulfillment_plan.id"), nullable=False, index=True
     )
     product_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     #: NULL warehouse + is_backorder marks unfulfillable residual (§5.2)
     warehouse_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("warehouse.id"), nullable=True
+        FK, ForeignKey("warehouse.id"), nullable=True
     )
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     is_backorder: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
@@ -284,10 +282,10 @@ class Subscription(Entity):
     __tablename__ = "subscription"
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     plan_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("subscription_plan.id"), nullable=False
+        FK, ForeignKey("subscription_plan.id"), nullable=False
     )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     next_bill_date: Mapped[date] = mapped_column(Date, nullable=False)
@@ -305,10 +303,10 @@ class Invoice(Entity):
     )
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     subscription_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("subscription.id"), nullable=True
+        FK, ForeignKey("subscription.id"), nullable=True
     )
     period_key: Mapped[str | None] = mapped_column(String(20), nullable=True)
     kind: Mapped[InvoiceKind] = mapped_column(String(20), nullable=False)
@@ -322,7 +320,7 @@ class InvoiceLine(Entity):
     __tablename__ = "invoice_line"
 
     invoice_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("invoice.id"), nullable=False, index=True
+        FK, ForeignKey("invoice.id"), nullable=False, index=True
     )
     description: Mapped[str] = mapped_column(String(255), nullable=False)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -334,7 +332,7 @@ class CreditNote(Entity):
     __tablename__ = "credit_note"
 
     invoice_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("invoice.id"), nullable=False, index=True
+        FK, ForeignKey("invoice.id"), nullable=False, index=True
     )
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -344,7 +342,7 @@ class Payment(Entity):
     __tablename__ = "payment"
 
     invoice_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("invoice.id"), nullable=False, index=True
+        FK, ForeignKey("invoice.id"), nullable=False, index=True
     )
     amount: Mapped[Decimal] = mapped_column(Money, nullable=False)
     method: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -355,13 +353,13 @@ class PortalMessage(Entity):
     __tablename__ = "portal_message"
 
     quotation_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=False, index=True
+        FK, ForeignKey("quotation.id"), nullable=False, index=True
     )
     quote_line_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("quote_line.id"), nullable=True
+        FK, ForeignKey("quote_line.id"), nullable=True
     )
     author_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("user.id"), nullable=False
+        FK, ForeignKey("user.id"), nullable=False
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     counter_discount_pct: Mapped[Decimal | None] = mapped_column(Percent, nullable=True)
@@ -377,10 +375,10 @@ class ProductAffinity(Entity):
     )
 
     antecedent_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     consequent_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("product.id"), nullable=False
+        FK, ForeignKey("product.id"), nullable=False
     )
     support: Mapped[Decimal] = mapped_column(Percent, nullable=False)
     confidence: Mapped[Decimal] = mapped_column(Percent, nullable=False)
@@ -398,19 +396,19 @@ class DecisionLog(Base):
 
     __tablename__ = "decision_log"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(PK, primary_key=True, autoincrement=True)
     agent: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     engine_version: Mapped[str] = mapped_column(String(60), nullable=False)
     quotation_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("quotation.id"), nullable=True, index=True
+        FK, ForeignKey("quotation.id"), nullable=True, index=True
     )
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    input_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    output_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    input_json: Mapped[dict] = mapped_column(JSONColumn, nullable=False)
+    output_json: Mapped[dict] = mapped_column(JSONColumn, nullable=False)
     verifier_verdict: Mapped[str] = mapped_column(String(10), nullable=False)
     latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     actor_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("user.id"), nullable=True
+        FK, ForeignKey("user.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -424,7 +422,7 @@ class Outbox(Entity):
     __tablename__ = "outbox"
 
     topic: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONColumn, nullable=False)
     status: Mapped[OutboxStatus] = mapped_column(
         String(20), nullable=False, default=OutboxStatus.PENDING, index=True
     )
@@ -440,5 +438,5 @@ class IdempotencyKey(Entity):
 
     key: Mapped[str] = mapped_column(String(120), nullable=False)
     endpoint: Mapped[str] = mapped_column(String(120), nullable=False)
-    response_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    response_json: Mapped[dict] = mapped_column(JSONColumn, nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False, default=200)

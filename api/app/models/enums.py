@@ -33,11 +33,23 @@ class QuoteState(StrEnum):
     PAID = "PAID"
 
 
-#: States in which a line edit must void approvals and force a re-score (§7).
+#: States in which a line edit must void approvals and force a re-score.
+#:
+#: §7 names three: READY_TO_FULFILL, SENT, UNDER_NEGOTIATION — the states
+#: reached AFTER the chain completes. We additionally include the two mid-chain
+#: PENDING_* states. §7's stated purpose is that no approval survives an edit,
+#: and a quote sitting in PENDING_MANAGER has a live pending step: editing it
+#: without re-scoring would let an approver sign off terms that changed under
+#: them. This strictly WIDENS the guarantee and never narrows it.
+#:
+#: DRAFT is deliberately excluded: a draft has no approvals to void, and §7's
+#: transition table says DRAFT leaves DRAFT only via `confirm`.
 REQUIRES_RESCORE_ON_EDIT = frozenset({
     QuoteState.READY_TO_FULFILL,
     QuoteState.SENT,
     QuoteState.UNDER_NEGOTIATION,
+    QuoteState.PENDING_MANAGER,
+    QuoteState.PENDING_FINANCE,
 })
 
 
