@@ -13,6 +13,16 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class SignupRequest(BaseModel):
+    email: str = Field(min_length=5, max_length=255)
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=8, max_length=128)
+    #: Self-service signup only ever creates a REP. Manager, finance and admin
+    #: are granted by an admin, never claimed at the sign-up form — otherwise
+    #: anyone could mint themselves an approver and sign off their own quotes.
+    role: str = "rep"
+
+
 class TokenResponse(BaseModel):
     token: str
     scope: str
@@ -68,6 +78,9 @@ class ApprovalStepOut(BaseModel):
     reason: str | None
     decided_by: int | None
     decided_at: datetime | None
+    #: Screen 6's audit trail is "User | Action | Date | Note" — an id is not a
+    #: user, so the name is resolved server-side rather than left to the client.
+    decided_by_name: str | None = None
 
 
 class QuoteOut(BaseModel):
@@ -83,6 +96,9 @@ class QuoteOut(BaseModel):
     approval_steps: list[ApprovalStepOut]
     legal_events: list[str]
     totals: dict
+    #: which approver the quote is waiting on right now, for the queue columns
+    current_stage: str | None = None
+    risk_band: str | None = None
 
 
 class ScoreOut(BaseModel):

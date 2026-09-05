@@ -158,6 +158,9 @@ def stock_by_warehouse(
     return [
         {
             "warehouse": w.code,
+            # the id, not just the code: the manual-override endpoint addresses
+            # warehouses by id, and resolving a code client-side is a guess
+            "warehouse_id": w.id,
             "warehouse_name": w.name,
             "product_id": p.id,
             "sku": p.sku,

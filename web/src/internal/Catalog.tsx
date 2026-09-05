@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  api, type CatalogProduct, type CatalogSummary, type ProductDetailOut,
+  api, type CatalogProduct, type CatalogSummary, type PriceListRef,
+  type ProductDetailOut,
 } from "@/lib/api";
 import { EmptyRow, ErrorBanner, PageHeader, StatCard, money } from "./components";
 
@@ -11,6 +12,25 @@ export default function Catalog() {
   const [selected, setSelected] = useState<ProductDetailOut | null>(null);
   const [category, setCategory] = useState("all");
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState({
+    sku: "", name: "", category: "Hardware", list_price: "", unit_cost: "",
+    is_subscription: false, is_promoted: false,
+  });
+
+  async function createProduct(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      const created = await api.post<ProductDetailOut>("/api/catalog/products", draft);
+      setCreating(false);
+      setDraft({ ...draft, sku: "", name: "", list_price: "", unit_cost: "" });
+      load();
+      setSelected(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   function load() {
     Promise.all([
@@ -40,14 +60,57 @@ export default function Catalog() {
         title="Product catalog"
         subtitle="Every product, variant and price list in one place."
         actions={
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
-            className="border border-slate-300 rounded px-2 py-1.5 text-sm">
-            <option value="all">All categories</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}
+              className="border border-slate-300 rounded px-2 py-1.5 text-sm">
+              <option value="all">All categories</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <button onClick={() => setCreating(!creating)}
+              data-testid="toggle-new-product"
+              className="bg-slate-900 text-white rounded px-3 py-1.5 text-sm font-medium">
+              {creating ? "Cancel" : "+ New product"}
+            </button>
+          </>
         }
       />
       <ErrorBanner error={error} />
+
+      {creating && (
+        <form onSubmit={createProduct}
+          className="bg-white border border-slate-200 rounded-lg p-4 grid md:grid-cols-6 gap-3 items-end"
+          data-testid="new-product-form">
+          {([
+            ["sku", "SKU"], ["name", "Name"],
+            ["list_price", "List price"], ["unit_cost", "Unit cost"],
+          ] as const).map(([field, label]) => (
+            <label key={field} className="text-sm">
+              <span className="block text-slate-600 mb-1">{label}</span>
+              <input
+                required
+                value={draft[field] as string}
+                data-testid={`new-${field}`}
+                onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
+                className="border border-slate-300 rounded px-2 py-1.5 text-sm w-full"
+              />
+            </label>
+          ))}
+          <label className="text-sm">
+            <span className="block text-slate-600 mb-1">Category</span>
+            <select value={draft.category}
+              onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1.5 text-sm w-full">
+              {["Hardware", "Software", "Service", "Subscription"].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" data-testid="create-product"
+            className="bg-emerald-700 text-white rounded px-3 py-1.5 text-sm font-medium">
+            Create
+          </button>
+        </form>
+      )}
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -112,18 +175,50 @@ export default function Catalog() {
         </table>
       </div>
 
-      {selected && <ProductDetail product={selected} onClose={() => setSelected(null)} />}
+      {selected && (
+        <ProductDetail
+          product={selected}
+          onClose={() => setSelected(null)}
+          onChanged={(p) => { setSelected(p); load(); }}
+          onError={setError}
+        />
+      )}
     </div>
   );
 }
 
 /** Screen 17 — Product and pricelist. */
 function ProductDetail({
-  product, onClose,
+  product, onClose, onChanged, onError,
 }: {
   product: ProductDetailOut;
   onClose: () => void;
+  onChanged: (p: ProductDetailOut) => void;
+  onError: (e: string) => void;
 }) {
+  const [lists, setLists] = useState<PriceListRef[]>([]);
+  const [variant, setVariant] = useState({ attribute: "", value: "", extra_price: "0" });
+  const [priceEdit, setPriceEdit] = useState({ price_list_id: "", price: "" });
+
+  useEffect(() => {
+    api.get<PriceListRef[]>("/api/catalog/price-lists").then(setLists).catch(() => setLists([]));
+  }, []);
+
+  async function run<T>(fn: () => Promise<T>) {
+    try { onChanged(await fn() as ProductDetailOut); }
+    catch (e) { onError(e instanceof Error ? e.message : String(e)); }
+  }
+
+  const addVariant = () =>
+    run(() => api.post<ProductDetailOut>(
+      `/api/catalog/products/${product.id}/variants`, variant));
+
+  const setPrice = () =>
+    run(() => api.put<ProductDetailOut>(
+      `/api/catalog/products/${product.id}/price-list`,
+      { price_list_id: Number(priceEdit.price_list_id), price: priceEdit.price },
+    ));
+
   const field = (label: string, value: React.ReactNode) => (
     <div>
       <p className="text-xs text-slate-500">{label}</p>
@@ -156,6 +251,25 @@ function ProductDetail({
       <div className="grid md:grid-cols-2 gap-5">
         <div>
           <h4 className="text-sm font-semibold text-slate-700 mb-2">Variants</h4>
+          <div className="flex flex-wrap items-end gap-2 mb-3">
+            <input placeholder="Attribute" value={variant.attribute}
+              data-testid="variant-attribute"
+              onChange={(e) => setVariant({ ...variant, attribute: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-sm w-28" />
+            <input placeholder="Value" value={variant.value}
+              data-testid="variant-value"
+              onChange={(e) => setVariant({ ...variant, value: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-sm w-28" />
+            <input placeholder="+/- price" value={variant.extra_price}
+              data-testid="variant-extra"
+              onChange={(e) => setVariant({ ...variant, extra_price: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-sm w-24" />
+            <button onClick={addVariant} data-testid="add-variant"
+              className="bg-slate-700 text-white rounded px-3 py-1 text-xs font-medium">
+              Add variant
+            </button>
+          </div>
+
           {product.variants.length === 0 ? (
             <p className="text-sm text-slate-400">No variants configured.</p>
           ) : (
@@ -209,6 +323,25 @@ function ProductDetail({
               ))}
             </tbody>
           </table>
+
+          <div className="flex flex-wrap items-end gap-2 mt-3">
+            <select value={priceEdit.price_list_id}
+              data-testid="price-list-select"
+              onChange={(e) => setPriceEdit({ ...priceEdit, price_list_id: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-sm">
+              <option value="">Price list…</option>
+              {lists.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+            <input placeholder="Price" value={priceEdit.price}
+              data-testid="price-value"
+              onChange={(e) => setPriceEdit({ ...priceEdit, price: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-sm w-28" />
+            <button onClick={setPrice} data-testid="set-price"
+              disabled={!priceEdit.price_list_id || !priceEdit.price}
+              className="bg-slate-700 text-white rounded px-3 py-1 text-xs font-medium disabled:opacity-40">
+              Set price
+            </button>
+          </div>
         </div>
       </div>
     </section>

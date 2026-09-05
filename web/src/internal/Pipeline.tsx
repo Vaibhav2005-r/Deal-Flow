@@ -2,14 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import {
   api,
   type AmountDue,
+  type BillingDetailOut,
   type FulfillmentOut,
   type InvoicesOut,
   type Quote,
+  type StockRow,
 } from "@/lib/api";
 import { StateBadge } from "./components";
 
-const money = (v: string | number) =>
-  new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(Number(v));
+import { money } from "./components";
+
+
 
 /**
  * Phase 4 — the post-approval pipeline: allocate → invoice → collect.
@@ -22,6 +25,10 @@ export default function Pipeline() {
   const [fulfillment, setFulfillment] = useState<FulfillmentOut | null>(null);
   const [invoices, setInvoices] = useState<InvoicesOut | null>(null);
   const [due, setDue] = useState<AmountDue | null>(null);
+  const [billing, setBilling] = useState<BillingDetailOut | null>(null);
+  const [stock, setStock] = useState<StockRow[]>([]);
+  const [overriding, setOverriding] = useState(false);
+  const [split, setSplit] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -35,8 +42,12 @@ export default function Pipeline() {
       api.get<FulfillmentOut>(`/api/quotes/${id}/fulfillment`),
       api.get<InvoicesOut>(`/api/quotes/${id}/invoices`),
       api.get<AmountDue>(`/api/quotes/${id}/amount-due`),
-    ]).then(([f, i, d]) => { setFulfillment(f); setInvoices(i); setDue(d); })
-      .catch((e) => setError(String(e.message)));
+      api.get<BillingDetailOut>(`/api/quotes/${id}/billing-detail`),
+      api.get<StockRow[]>("/api/fulfillment/stock"),
+    ]).then(([f, i, d, b, st]) => {
+      setFulfillment(f); setInvoices(i); setDue(d); setBilling(b); setStock(st);
+      setOverriding(false); setSplit({});
+    }).catch((e) => setError(String(e.message)));
   }, []);
 
   function select(id: number) {
@@ -56,6 +67,49 @@ export default function Pipeline() {
   }
 
   const quote = quotes.find((q) => q.id === selected);
+  const warehouses = Array.from(
+    new Map(stock.map((s) => [s.warehouse, s])).values(),
+  );
+
+  /** Screen 8's manual override: the operator names the split themselves.
+   *  The server still refuses one that does not cover demand or exceeds
+   *  available stock — a costlier plan is their call, an impossible one is not. */
+  async function applyOverride() {
+    if (!selected || !fulfillment) return;
+    setError(null); setNote(null);
+    const allocations = Object.entries(split)
+      .filter(([, v]) => Number(v) > 0)
+      .map(([key, v]) => {
+        const [productId, warehouse] = key.split("|");
+        const row = stock.find((s) => s.warehouse === warehouse);
+        return {
+          product_id: Number(productId),
+          warehouse_id: warehouse === "backorder" ? null : (row?.warehouse_id ?? null),
+          qty: Number(v),
+        };
+      });
+    try {
+      const res = await api.post<{ total_cost: string; shipment_count: number }>(
+        `/api/quotes/${selected}/fulfillment/override`, { allocations },
+      );
+      setNote(`Override applied — ${res.shipment_count} shipment(s), cost ${res.total_cost}`);
+      loadDetail(selected);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function subscriptionAction(path: string, body: unknown, label: string) {
+    if (!selected) return;
+    setError(null); setNote(null);
+    try {
+      await api.post(`/api/quotes/${selected}${path}`, body);
+      setNote(label);
+      loadDetail(selected);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -123,6 +177,77 @@ export default function Pipeline() {
         )}
       </section>
 
+      {billing && (billing.one_time_lines.length > 0 || billing.recurring_lines.length > 0) && (
+        <section className="bg-white border border-slate-200 rounded-lg p-4" data-testid="billing-detail">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Billing detail</h3>
+          <div className="grid md:grid-cols-2 gap-5">
+            <div>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1.5">
+                One-time lines
+              </h4>
+              {billing.one_time_lines.length === 0 ? (
+                <p className="text-sm text-slate-400">None.</p>
+              ) : billing.one_time_lines.map((ln) => (
+                <div key={ln.product_id} className="flex justify-between text-sm py-1 border-b border-slate-100">
+                  <span>{ln.product_name} <span className="text-slate-400">×{ln.qty}</span></span>
+                  <span className="tabular-nums">{money(ln.amount)}</span>
+                </div>
+              ))}
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase mb-1.5">
+                Recurring lines
+              </h4>
+              {billing.recurring_lines.length === 0 ? (
+                <p className="text-sm text-slate-400">None.</p>
+              ) : billing.recurring_lines.map((ln) => (
+                <div key={ln.product_id} className="flex justify-between text-sm py-1 border-b border-slate-100">
+                  <span>{ln.product_name} <span className="text-slate-400">×{ln.qty}</span></span>
+                  <span className="tabular-nums">{money(ln.amount)}</span>
+                </div>
+              ))}
+              {billing.subscription && (
+                <div className="mt-3">
+                  <p className="text-xs text-slate-500 mb-2">
+                    Subscription #{billing.subscription.id} · next bill{" "}
+                    <strong>{billing.subscription.next_bill_date}</strong> ·{" "}
+                    {billing.subscription.status}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => subscriptionAction(
+                        "/subscription/pause",
+                        { paused: billing!.subscription!.status !== "paused" },
+                        "Subscription updated",
+                      )}
+                      data-testid="pause-subscription"
+                      className="bg-amber-600 text-white rounded px-3 py-1 text-xs font-medium"
+                    >
+                      {billing.subscription.status === "paused" ? "Resume" : "Pause"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        const reason = window.prompt("Reason for cancelling?");
+                        if (reason?.trim()) {
+                          subscriptionAction(
+                            "/subscription/cancel", { reason },
+                            "Cancelled — service continues to the end of the paid period",
+                          );
+                        }
+                      }}
+                      data-testid="cancel-subscription"
+                      className="bg-red-700 text-white rounded px-3 py-1 text-xs font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {fulfillment?.plan && (
         <section className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-sm font-semibold text-slate-700 mb-2">
@@ -151,6 +276,59 @@ export default function Pipeline() {
               ))}
             </tbody>
           </table>
+
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              onClick={() => setOverriding(!overriding)}
+              data-testid="toggle-override"
+              className="border border-slate-300 rounded px-3 py-1.5 text-xs font-medium"
+            >
+              {overriding ? "Keep suggested split" : "Manual override"}
+            </button>
+            {!overriding && (
+              <span className="text-xs text-slate-400">
+                Suggested split accepted — {fulfillment.plan.shipment_count} shipment(s)
+              </span>
+            )}
+          </div>
+
+          {overriding && (
+            <div className="mt-3 border-t border-slate-100 pt-3" data-testid="override-form">
+              <p className="text-xs text-slate-500 mb-2">
+                Enter a quantity per warehouse for each product. The plan must still
+                cover demand exactly and stay within available stock.
+              </p>
+              {Array.from(new Set(fulfillment.lines.map((l) => l.product_id))).map((pid) => {
+                const name = fulfillment.lines.find((l) => l.product_id === pid)?.product_name;
+                return (
+                  <div key={pid} className="flex items-center gap-2 mb-1.5">
+                    <span className="text-sm w-56 truncate">{name}</span>
+                    {warehouses.map((w) => (
+                      <label key={w.warehouse} className="text-xs text-slate-500">
+                        {w.warehouse}
+                        <input
+                          type="number" min={0}
+                          value={split[`${pid}|${w.warehouse}`] ?? ""}
+                          data-testid={`split-${pid}-${w.warehouse}`}
+                          onChange={(e) =>
+                            setSplit({ ...split, [`${pid}|${w.warehouse}`]: e.target.value })
+                          }
+                          className="ml-1 border border-slate-300 rounded px-1.5 py-0.5 w-16 text-sm"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
+              <button
+                onClick={applyOverride}
+                data-testid="apply-override"
+                className="mt-2 bg-indigo-700 text-white rounded px-3 py-1.5 text-xs font-medium"
+              >
+                Apply override
+              </button>
+            </div>
+          )}
         </section>
       )}
 

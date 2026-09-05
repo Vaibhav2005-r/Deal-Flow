@@ -110,25 +110,59 @@ export function LineTable({
   );
 }
 
+const TRAIL_TONE: Record<string, string> = {
+  APPROVED: "text-emerald-700",
+  REJECTED: "text-red-700",
+  RETURNED: "text-amber-700",
+  VOIDED_BY_EDIT: "text-slate-400 line-through",
+  PENDING: "text-slate-900 font-medium",
+};
+
+/**
+ * Screen 6's audit trail: User | Action | Date | Note.
+ *
+ * A step id is not a user and a null date is not "just now" — an approval
+ * record that cannot say who decided and when is not an audit trail, so all
+ * four columns are shown, with an explicit dash where a value genuinely does
+ * not exist yet.
+ */
 export function ApprovalTrail({ steps }: { steps: ApprovalStep[] }) {
   if (!steps.length) return null;
-  const tone: Record<string, string> = {
-    APPROVED: "text-emerald-700",
-    REJECTED: "text-red-700",
-    RETURNED: "text-amber-700",
-    VOIDED_BY_EDIT: "text-slate-400 line-through",
-    PENDING: "text-slate-900 font-medium",
-  };
   const sorted = [...steps].sort((a, b) => a.id - b.id);
   return (
-    <ol className="text-sm space-y-1">
-      {sorted.map((s) => (
-        <li key={s.id} className={tone[s.decision] ?? "text-slate-700"}>
-          Step {s.step_index + 1} ({s.approver_role.replaceAll("_", " ")}) — {s.decision}
-          {s.reason && <span className="text-slate-500"> · "{s.reason}"</span>}
-        </li>
-      ))}
-    </ol>
+    <table className="w-full text-sm" data-testid="approval-trail">
+      <thead>
+        <tr className="text-left text-slate-500 border-b border-slate-200">
+          <th className="py-1.5 font-medium">User</th>
+          <th className="py-1.5 font-medium">Action</th>
+          <th className="py-1.5 font-medium">Date</th>
+          <th className="py-1.5 font-medium">Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((s) => (
+          <tr key={s.id} className="border-b border-slate-100">
+            <td className="py-1.5">
+              {s.decided_by_name ?? <span className="text-slate-300">—</span>}
+              <span className="block text-xs text-slate-400">
+                step {s.step_index + 1} · {s.approver_role.replaceAll("_", " ")}
+              </span>
+            </td>
+            <td className={`py-1.5 ${TRAIL_TONE[s.decision] ?? "text-slate-700"}`}>
+              {s.decision.replaceAll("_", " ").toLowerCase()}
+            </td>
+            <td className="py-1.5 text-slate-500 tabular-nums">
+              {s.decided_at
+                ? s.decided_at.slice(0, 10)
+                : <span className="text-slate-300">awaiting</span>}
+            </td>
+            <td className="py-1.5 text-slate-600">
+              {s.reason ?? <span className="text-slate-300">—</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

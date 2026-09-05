@@ -158,8 +158,11 @@ def test_unknown_invoice_is_404(client, rep):
 
 
 def test_catalog_lists_every_product_with_its_margin(client, rep):
+    """Count is >= the seeded 30, not == : other tests in this module create
+    products against the shared seeded database, and pinning an exact total
+    would make this fail for a reason that has nothing to do with margins."""
     rows = client.get("/api/catalog/products", headers=auth(rep["token"])).json()
-    assert len(rows) == 30
+    assert len(rows) >= 30
     for r in rows:
         assert Decimal(r["unit_cost"]) < Decimal(r["list_price"]), r["sku"]
         assert Decimal(r["margin_pct"]) > 0

@@ -14,7 +14,7 @@ file disagree, that file wins.
 All six build phases are complete, and all 18 screens of the product flow are built.
 
 ```
-333 passed in 12.7s          # full suite
+361 passed in 13.6s          # full suite
  72 passed in 0.04s          # tests/golden — the pre-push gate (budget: 2s)
   0.79s                      # make demo-reset (budget: 10s)
 ```
@@ -126,7 +126,7 @@ a convention:
 28 tables. Money `NUMERIC(14,2)` as `Decimal`; percentages `NUMERIC(5,2)` as whole
 numbers. `decision_log` is append-only; `outbox` rows are written in the same
 transaction as the state change they belong to; `idempotency_key` stops a double-click
-becoming two invoices. 50 endpoints across quoting, approvals, fulfillment, billing,
+becoming two invoices. 60 endpoints across quoting, approvals, fulfillment, billing,
 the portal, catalog, admin config and reporting.
 
 ### `web/src/` — two separate router trees
@@ -142,17 +142,42 @@ commercial terms only.
 
 | # | Screen | # | Screen |
 |---|---|---|---|
-| 1 | Login | 10 | Billing detail (Pipeline) |
+| 1 | Login **& signup** | 10 | Billing detail — one-time vs recurring, pause/cancel |
 | 2 | Sales dashboard | 11 | Customer portal |
-| 3 | Quotations list | 12 | Invoices list |
+| 3 | Quotations — **kanban + table** | 12 | Invoices list |
 | 4 | Quotation detail | 13 | Invoice detail |
-| 5 | Approvals list | 14 | Deal health dashboard |
-| 6 | Approval detail | 15 | Admin reporting |
-| 7 | Fulfillment & stock | 16 | Product catalog |
-| 8 | Fulfillment detail (Pipeline) | 17 | Product detail |
+| 5 | Approvals — **risk, stage, filters** | 14 | Deal health dashboard |
+| 6 | Approval detail — **full audit trail** | 15 | Admin reporting |
+| 7 | Fulfillment & stock | 16 | Product catalog — **create** |
+| 8 | Fulfillment — **manual override** | 17 | Product detail — **variants, price lists** |
 | 9 | Subscriptions | 18 | Discount tiers & approval chains |
 
 Plus an **Audit** screen beyond the flow: `decision_log` telemetry with per-row replay.
+
+A few of these are worth calling out because the guard rails matter more than the
+screen:
+
+**Manual override (8).** The operator names their own split. A costlier plan is their
+call; an impossible one is not — the server re-checks coverage and stock exactly as it
+does for the optimizer, and a rejected override leaves the original reservation intact
+rather than leaking it.
+
+**Backorder consolidation (§5.2).** On stock receipt this raises a
+`CONSOLIDATE_BACKORDER` proposal on the outbox. It does not re-allocate by itself:
+moving stock and money without a human deciding is what §8's trust ladder exists to
+prevent.
+
+**Cancel is not a refund (10).** Cancelling ends the subscription at
+`next_bill_date` and emits no credit note; the customer keeps the period they paid for.
+Refunding mid-period is a proration, which is a different button. Conflating the two is
+how a cancellation silently becomes money back.
+
+**Signup (1) always creates a rep.** The role field on the request is deliberately
+ignored — otherwise anyone could mint themselves a manager and approve their own
+over-ceiling quotes. Passwords are PBKDF2 with a per-user salt.
+
+**Catalog writes refuse a loss (16/17).** A product, a variant's price delta, or a price
+list entry that would put the sale at or below unit cost is rejected.
 
 ---
 
@@ -229,9 +254,14 @@ client was driven against it in a browser.
 dialect-specific — but the Postgres-only surface (the append-only `decision_log`
 trigger, `JSONB` operators) has no test running against Postgres.
 
-**Screens 16–18 are read-plus-config, not full CRUD.** Products can be created and
-edited and the discount configuration can be saved, but variants and price lists are
-seeded rather than editable in the UI.
-
 **Currency is presentational.** Amounts render with `en-IN` grouping; the price-list
-table carries a currency column, but there is no conversion anywhere.
+table carries a currency column and the seeded USD list applies a flat multiplier, but
+there is no FX rate anywhere — a USD price is a number a human typed, not a conversion.
+
+**The `decision_log` append-only trigger is PostgreSQL-only.** The migration installs
+`BEFORE UPDATE`/`BEFORE DELETE` triggers that raise; on SQLite the statement is skipped,
+so the test suite exercises the append-only *convention* but not its enforcement.
+
+**Deleting a product is not offered.** Products are referenced by historical quote
+lines, so a delete would either orphan an audit trail or cascade into one. Archiving is
+the right answer and is not built.

@@ -25,6 +25,7 @@ from app.api.deps import (
 from app.models.enums import QuoteState, Role
 from app.models.tables import (
     CreditNote,
+    QuoteLine,
     FulfillmentLine,
     FulfillmentPlan,
     Invoice,
@@ -52,6 +53,24 @@ router = APIRouter(prefix="/api/quotes", tags=["fulfillment"])
 class PaymentIn(BaseModel):
     amount: Decimal = Field(gt=0)
     method: str = "bank_transfer"
+
+
+class OverrideAllocation(BaseModel):
+    product_id: int
+    warehouse_id: int | None = None   # None = deliberately backordered
+    qty: int = Field(gt=0)
+
+
+class OverrideIn(BaseModel):
+    allocations: list[OverrideAllocation] = Field(min_length=1)
+
+
+class CancelIn(BaseModel):
+    reason: str = Field(min_length=3)
+
+
+class PauseIn(BaseModel):
+    paused: bool
 
 
 class SubscriptionChangeIn(BaseModel):
@@ -265,6 +284,123 @@ def record_payment(
     result["state"] = str(quote.state)
     session.flush()
     return result
+
+
+@router.post("/{quote_id}/fulfillment/override")
+def override_fulfillment(
+    quote_id: int,
+    body: OverrideIn,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_internal_user),
+) -> dict:
+    """Screen 8's "manual override" — replace the optimizer's split.
+
+    The operator may choose a costlier plan; they may not choose an impossible
+    one, so coverage and stock are re-checked exactly as for the optimizer.
+    """
+    quote = _load(session, quote_id)
+    plan, notes = fulfillment_service.override_plan(
+        session,
+        quote,
+        [a.model_dump() for a in body.allocations],
+        actor_id=user.id,
+    )
+    session.flush()
+    return {
+        "quotation_id": quote.id,
+        "plan_id": plan.id,
+        "total_cost": str(plan.total_cost),
+        "shipment_count": plan.shipment_count,
+        "notes": notes,
+    }
+
+
+@router.post("/{quote_id}/fulfillment/consolidate/{product_id}")
+def consolidate_backorders(
+    quote_id: int,
+    product_id: int,
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> dict:
+    """§5.2: on stock receipt, re-check open backorders and propose a
+    consolidation. Raises a proposal; it does not move stock by itself."""
+    _load(session, quote_id)
+    return fulfillment_service.consolidate_backorders(session, product_id)
+
+
+@router.post("/{quote_id}/subscription/cancel")
+def cancel_subscription(
+    quote_id: int,
+    body: CancelIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.FINANCE, Role.ADMIN)),
+) -> dict:
+    subscription = session.scalar(
+        select(Subscription).where(Subscription.quotation_id == quote_id)
+    )
+    if subscription is None:
+        raise HTTPException(status_code=404, detail="no subscription on this quotation")
+    return billing_service.cancel_subscription(
+        session, subscription, date.today(), body.reason
+    )
+
+
+@router.post("/{quote_id}/subscription/pause")
+def pause_subscription(
+    quote_id: int,
+    body: PauseIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.FINANCE, Role.ADMIN)),
+) -> dict:
+    subscription = session.scalar(
+        select(Subscription).where(Subscription.quotation_id == quote_id)
+    )
+    if subscription is None:
+        raise HTTPException(status_code=404, detail="no subscription on this quotation")
+    return billing_service.pause_subscription(session, subscription, body.paused)
+
+
+@router.get("/{quote_id}/billing-detail")
+def billing_detail(
+    quote_id: int,
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> dict:
+    """Screen 10: one-time lines from the original quotation, recurring lines
+    on their own schedule, side by side."""
+    quote = _load(session, quote_id)
+    lines = session.scalars(
+        select(QuoteLine).where(QuoteLine.quotation_id == quote.id).order_by(QuoteLine.id)
+    ).all()
+
+    def shape(ln: QuoteLine) -> dict:
+        product = session.get(Product, ln.product_id)
+        net = ln.unit_price * Decimal(ln.qty) * (1 - ln.discount_pct / 100)
+        return {
+            "product_id": ln.product_id,
+            "product_name": product.name if product else "",
+            "qty": ln.qty,
+            "amount": str(net.quantize(Decimal("0.01"))),
+        }
+
+    subscription = session.scalar(
+        select(Subscription).where(Subscription.quotation_id == quote.id)
+    )
+    return {
+        "quotation_id": quote.id,
+        "state": str(quote.state),
+        "one_time_lines": [shape(ln) for ln in lines if not ln.is_recurring],
+        "recurring_lines": [shape(ln) for ln in lines if ln.is_recurring],
+        "subscription": (
+            {
+                "id": subscription.id,
+                "start_date": str(subscription.start_date),
+                "next_bill_date": str(subscription.next_bill_date),
+                "status": str(subscription.status),
+            }
+            if subscription else None
+        ),
+    }
 
 
 @router.get("/{quote_id}/amount-due")

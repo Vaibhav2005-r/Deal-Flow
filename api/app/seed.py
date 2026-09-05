@@ -486,7 +486,11 @@ APPROVAL_RULES: list[tuple[str, str, list[str]]] = [
 STALLED_FIXTURES: list[tuple[str, int, str, str, str]] = [
     (QuoteState.SENT, 12, "6", "HW-LT-16", "sent, gone quiet"),
     (QuoteState.UNDER_NEGOTIATION, 21, "34", "HW-WS-01", "negotiating, deep discount"),
-    (QuoteState.PENDING_MANAGER, 9, "9", "SW-BI-01", "waiting on an approver"),
+    # 18% against the gold/Software effective ceiling of 15% is a 3pp breach,
+    # which scores 30.0 and routes to a single SALES_MANAGER step — coherent
+    # with the pending approval row this fixture creates. A within-ceiling
+    # discount here would sit in PENDING_MANAGER having breached nothing.
+    (QuoteState.PENDING_MANAGER, 9, "18", "SW-BI-01", "waiting on an approver"),
 ]
 
 
@@ -535,6 +539,7 @@ def seed_stalled_deals(session: Session, ref: dict, as_of: date) -> list[int]:
         ))
 
         if state == QuoteState.PENDING_MANAGER:
+            quote.risk_score = Decimal("30.0")
             session.add(ApprovalRequest(
                 quotation_id=quote.id,
                 step_index=0,

@@ -46,6 +46,28 @@ class ProductPatch(BaseModel):
     is_promoted: bool | None = None
 
 
+class VariantIn(BaseModel):
+    attribute: str = Field(min_length=1, max_length=60)
+    value: str = Field(min_length=1, max_length=120)
+    extra_price: Decimal = Decimal("0")
+
+
+class PriceListItemIn(BaseModel):
+    price_list_id: int
+    price: Decimal = Field(gt=0)
+
+
+@router.get("/price-lists")
+def list_price_lists(
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> list[dict]:
+    return [
+        {"id": pl.id, "name": pl.name, "currency": pl.currency}
+        for pl in session.scalars(select(PriceList).order_by(PriceList.id)).all()
+    ]
+
+
 @router.get("/summary")
 def catalog_summary(
     session: Session = Depends(get_session),
@@ -199,5 +221,109 @@ def update_product(
         )
     for field, value in updates.items():
         setattr(product, field, value)
+    session.flush()
+    return product_detail(product_id, session)
+
+
+# --------------------------------------------------------------------------
+# variants and price lists  (screen 17)
+# --------------------------------------------------------------------------
+
+
+@router.post("/products/{product_id}/variants", status_code=201)
+def add_variant(
+    product_id: int,
+    body: VariantIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    product = session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail=f"product {product_id} not found")
+
+    duplicate = session.scalar(
+        select(ProductVariant).where(
+            ProductVariant.product_id == product_id,
+            ProductVariant.attribute == body.attribute,
+            ProductVariant.value == body.value,
+        )
+    )
+    if duplicate is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{body.attribute} '{body.value}' already exists on this product",
+        )
+
+    # A variant that takes the price below cost would sell at a loss on every
+    # line that selects it — the same rule the product itself is held to.
+    if product.list_price + body.extra_price <= product.unit_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"extra_price {body.extra_price} would put the variant price at or "
+                f"below unit cost {product.unit_cost}"
+            ),
+        )
+
+    session.add(ProductVariant(
+        product_id=product_id, attribute=body.attribute,
+        value=body.value, extra_price=body.extra_price,
+    ))
+    session.flush()
+    return product_detail(product_id, session)
+
+
+@router.delete("/products/{product_id}/variants/{variant_id}")
+def remove_variant(
+    product_id: int,
+    variant_id: int,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    variant = session.get(ProductVariant, variant_id)
+    if variant is None or variant.product_id != product_id:
+        raise HTTPException(status_code=404, detail="variant not on this product")
+    session.delete(variant)
+    session.flush()
+    return product_detail(product_id, session)
+
+
+@router.put("/products/{product_id}/price-list")
+def set_price_list_item(
+    product_id: int,
+    body: PriceListItemIn,
+    session: Session = Depends(get_session),
+    _user: User = Depends(require_roles(Role.ADMIN)),
+) -> dict:
+    product = session.get(Product, product_id)
+    if product is None:
+        raise HTTPException(status_code=404, detail=f"product {product_id} not found")
+    if session.get(PriceList, body.price_list_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"price list {body.price_list_id} not found"
+        )
+    if body.price <= product.unit_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"price {body.price} is at or below unit cost {product.unit_cost} — "
+                f"every sale on this list would lose money"
+            ),
+        )
+
+    existing = session.scalar(
+        select(PriceListItem).where(
+            PriceListItem.price_list_id == body.price_list_id,
+            PriceListItem.product_id == product_id,
+        )
+    )
+    if existing is not None:
+        existing.price = body.price
+    else:
+        session.add(PriceListItem(
+            price_list_id=body.price_list_id,
+            product_id=product_id,
+            price=body.price,
+        ))
     session.flush()
     return product_detail(product_id, session)

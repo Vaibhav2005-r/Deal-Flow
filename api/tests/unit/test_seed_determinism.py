@@ -113,3 +113,44 @@ def test_no_quotation_relies_on_the_server_default_timestamp():
         f"Quotation constructed without last_activity_at at line(s) {missing} — "
         f"it would fall back to wall-clock now() and break seed reproducibility"
     )
+
+
+def test_seeded_risk_scores_match_what_the_engine_computes(tmp_path):
+    """A hand-written score in a fixture is a claim about the engine.
+
+    The PENDING_MANAGER fixture carries a risk_score so the approval queue has
+    a real blended-risk band to show. If someone edits its discount without
+    editing the score, the demo quietly displays a number the engine disagrees
+    with — so the fixture is checked against the engine rather than trusted.
+    """
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from app.domain.governance import decide
+    from app.models.enums import QuoteState
+    from app.models.tables import Quotation
+    from app.services.snapshots import build_governance_snapshot
+
+    url = f"sqlite:///{tmp_path / 'scores.db'}"
+    seed.run(url)
+
+    with Session(create_engine(url, future=True)) as s:
+        scored = s.scalars(
+            select(Quotation).where(
+                Quotation.risk_score.is_not(None),
+                Quotation.state.in_([
+                    QuoteState.PENDING_MANAGER, QuoteState.PENDING_FINANCE
+                ]),
+            )
+        ).all()
+        assert scored, "expected at least one seeded quote awaiting approval"
+
+        for quote in scored:
+            recomputed = decide(build_governance_snapshot(s, quote)).output
+            assert float(quote.risk_score) == recomputed["score"], (
+                f"quote {quote.id}: seeded {quote.risk_score} but the engine "
+                f"computes {recomputed['score']}"
+            )
+            assert recomputed["approval_chain"], (
+                f"quote {quote.id} awaits approval but scores no chain"
+            )

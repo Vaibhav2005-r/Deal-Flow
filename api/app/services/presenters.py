@@ -15,7 +15,14 @@ from sqlalchemy.orm import Session
 from app.api.schemas import ApprovalStepOut, LineOut, QuoteOut
 from app.domain.pricing import line_net_value
 from app.models.enums import QuoteState
-from app.models.tables import ApprovalRequest, Customer, Product, Quotation, QuoteLine
+from app.models.tables import (
+    ApprovalRequest,
+    Customer,
+    Product,
+    Quotation,
+    QuoteLine,
+    User,
+)
 from app.services.state_machine import legal_events
 
 
@@ -68,6 +75,27 @@ def quote_out(session: Session, quotation: Quotation) -> QuoteOut:
         .order_by(ApprovalRequest.step_index, ApprovalRequest.id)
     ).all()
 
+    step_outs = []
+    for step in steps:
+        out = ApprovalStepOut.model_validate(step)
+        if step.decided_by is not None:
+            approver = session.get(User, step.decided_by)
+            out = out.model_copy(
+                update={"decided_by_name": approver.full_name if approver else None}
+            )
+        step_outs.append(out)
+
+    pending = next(
+        (s for s in steps if str(s.decision) == "PENDING"), None
+    )
+    score = float(quotation.risk_score) if quotation.risk_score is not None else None
+    band = (
+        None if score is None
+        else "HIGH" if score >= 50
+        else "MEDIUM" if score >= 20
+        else "LOW"
+    )
+
     return QuoteOut(
         id=quotation.id,
         customer_id=quotation.customer_id,
@@ -78,7 +106,9 @@ def quote_out(session: Session, quotation: Quotation) -> QuoteOut:
         version=quotation.version,
         risk_score=quotation.risk_score,
         lines=outs,
-        approval_steps=[ApprovalStepOut.model_validate(s) for s in steps],
+        approval_steps=step_outs,
+        current_stage=pending.approver_role if pending else None,
+        risk_band=band,
         legal_events=[str(e) for e in legal_events(QuoteState(str(quotation.state)))],
         totals={
             "list_total": str(list_total),

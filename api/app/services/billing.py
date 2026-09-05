@@ -24,6 +24,7 @@ from app.domain.verifiers import verify_billing
 from app.models.enums import InvoiceKind, InvoiceStatus, SubscriptionStatus
 from app.models.tables import (
     CreditNote,
+    Outbox,
     Invoice,
     InvoiceLine,
     Payment,
@@ -275,6 +276,55 @@ def change_subscription_amount(
 
     session.flush()
     return result
+
+
+def cancel_subscription(
+    session: Session,
+    subscription: Subscription,
+    as_of: date,
+    reason: str,
+) -> dict:
+    """Cancel at end of period (§5.3's cancellation policy).
+
+    The remaining paid-for period is NOT refunded: the customer keeps service
+    until `next_bill_date` and simply is not billed again. Cancelling mid-period
+    with a refund is a proration, which is what `change_subscription_amount`
+    is for — conflating the two is how a cancellation silently becomes a credit.
+    """
+    if subscription.status == SubscriptionStatus.CANCELLED:
+        raise VerifierFailure("billing", ["subscription is already cancelled"])
+
+    subscription.status = SubscriptionStatus.CANCELLED
+    session.add(Outbox(topic="subscription.cancelled", payload={
+        "subscription_id": subscription.id,
+        "quotation_id": subscription.quotation_id,
+        "effective": str(subscription.next_bill_date),
+        "reason": reason,
+    }))
+    session.flush()
+    return {
+        "subscription_id": subscription.id,
+        "status": str(subscription.status),
+        "service_until": str(subscription.next_bill_date),
+        "refunded": False,
+        "reason": reason,
+    }
+
+
+def pause_subscription(
+    session: Session, subscription: Subscription, paused: bool
+) -> dict:
+    if subscription.status == SubscriptionStatus.CANCELLED:
+        raise VerifierFailure("billing", ["a cancelled subscription cannot be paused"])
+    subscription.status = (
+        SubscriptionStatus.PAUSED if paused else SubscriptionStatus.ACTIVE
+    )
+    session.flush()
+    return {
+        "subscription_id": subscription.id,
+        "status": str(subscription.status),
+        "next_bill_date": str(subscription.next_bill_date),
+    }
 
 
 # --------------------------------------------------------------------------

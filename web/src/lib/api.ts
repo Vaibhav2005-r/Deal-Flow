@@ -75,6 +75,7 @@ export interface ApprovalStep {
   decision: string;
   reason: string | null;
   decided_by: number | null;
+  decided_by_name: string | null;
   decided_at: string | null;
 }
 
@@ -91,6 +92,8 @@ export interface Quote {
   approval_steps: ApprovalStep[];
   legal_events: string[];
   totals: Record<string, string | number>;
+  current_stage: string | null;
+  risk_band: string | null;
 }
 
 export interface Score {
@@ -354,6 +357,7 @@ export interface DashboardOut {
 // ---------------------------------------------------------------- screen 7
 export interface StockRow {
   warehouse: string;
+  warehouse_id: number;
   warehouse_name: string;
   product_id: number;
   sku: string;
@@ -474,4 +478,23 @@ export interface DiscountConfig {
     route_finance_min: string;
     hard_stop_excess_pp: string;
   };
+}
+
+export interface BillingDetailOut {
+  quotation_id: number;
+  state: string;
+  one_time_lines: { product_id: number; product_name: string; qty: number; amount: string }[];
+  recurring_lines: { product_id: number; product_name: string; qty: number; amount: string }[];
+  subscription: {
+    id: number;
+    start_date: string;
+    next_bill_date: string;
+    status: string;
+  } | null;
+}
+
+export interface PriceListRef {
+  id: number;
+  name: string;
+  currency: string;
 }
