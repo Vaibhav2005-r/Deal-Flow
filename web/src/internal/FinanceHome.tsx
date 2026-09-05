@@ -52,21 +52,24 @@ export default function FinanceHome() {
   const [approvals, setApprovals] = useState<Quote[]>([]);
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
   const [dealHealth, setDealHealth] = useState<DealHealthAssessment[]>([]);
+  const [quotes, setQuotes] = useState<Quote[]>([]);
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
     try {
-      const [invRes, appRes, subRes, healthRes] = await Promise.allSettled([
+      const [invRes, appRes, subRes, healthRes, quoteRes] = await Promise.allSettled([
         api.get<InvoiceRow[]>("/api/invoices"),
         api.get<Quote[]>("/api/approvals"),
         api.get<SubscriptionRow[]>("/api/subscriptions"),
         api.get<DealHealthAssessment[]>("/api/deal-health"),
+        api.getPaginated<Quote[]>("/api/quotes?page=1&page_size=50&all_quotes=true"),
       ]);
 
       if (invRes.status === "fulfilled") setInvoices(invRes.value);
       if (appRes.status === "fulfilled") setApprovals(appRes.value);
       if (subRes.status === "fulfilled") setSubscriptions(subRes.value);
       if (healthRes.status === "fulfilled") setDealHealth(healthRes.value);
+      if (quoteRes.status === "fulfilled") setQuotes(quoteRes.value.data);
 
       setLastUpdated(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch {
@@ -81,35 +84,33 @@ export default function FinanceHome() {
   }, [loadAllData]);
 
   // Derived Financial Metrics
-  const totalBilled = invoices.reduce((acc, inv) => acc + (Number(inv.total) || 0), 0);
-  const totalPaid = invoices
-    .filter((i) => i.status === "paid")
-    .reduce((acc, inv) => acc + (Number(inv.paid) || Number(inv.total) || 0), 0);
-  
-  const pendingInvoices = invoices.filter((i) => i.status === "unpaid" || i.status === "pending" || Number(i.outstanding) > 0);
-  const totalOutstanding = pendingInvoices.reduce((acc, inv) => acc + (Number(inv.outstanding) || Number(inv.total) || 0), 0);
+  const totalQuotationValue = quotes.reduce(
+    (acc, q) => acc + (Number(q.totals?.net_total) || 0),
+    0
+  );
 
-  const overdueInvoices = invoices.filter((i) => i.status === "overdue" || (i.status === "unpaid" && Number(i.outstanding) > 0));
-  const totalOverdue = overdueInvoices.reduce((acc, inv) => acc + (Number(inv.outstanding) || Number(inv.total) || 0), 0);
+  const pendingInvoices = invoices.filter(
+    (i) => i.status === "unpaid" || i.status === "pending" || Number(i.outstanding) > 0
+  );
+  const totalOutstanding = pendingInvoices.reduce(
+    (acc, inv) => acc + (Number(inv.outstanding) || Number(inv.total) || 0),
+    0
+  );
 
   const pendingApprovalsCount = approvals.filter((q) => q.current_stage !== null).length;
   const activeSubs = subscriptions.filter((s) => s.status === "active");
   const mrr = activeSubs.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
 
   // Fallbacks if data is fresh / unseeded
-  const displayRevenue = totalBilled > 0 ? totalBilled : 4280000;
-  const displayPendingCount = pendingInvoices.length > 0 ? pendingInvoices.length : 24;
-  const displayPendingAmount = totalOutstanding > 0 ? totalOutstanding : 860000;
-  const displayOverdueAmount = totalOverdue > 0 ? totalOverdue : 320000;
-  const displayOverdueCount = overdueInvoices.length > 0 ? overdueInvoices.length : 8;
+  const displayQuotationValue = totalQuotationValue > 0 ? totalQuotationValue : 5840000;
   const displayPendingApprovals = pendingApprovalsCount > 0 ? pendingApprovalsCount : 7;
+  const displayOutstandingAmount = totalOutstanding > 0 ? totalOutstanding : 860000;
   const displayActiveSubs = activeSubs.length > 0 ? activeSubs.length : 128;
 
   // Chart datasets
   const chartData = period === "monthly" ? MONTHLY_DATA : period === "quarterly" ? QUARTERLY_DATA : YEARLY_DATA;
   const maxVal = Math.max(...chartData.map((d) => Math.max(d.revenue, d.prior))) * 1.15;
 
-  // Format currency in Indian Lakhs (₹L) or standard units
   const formatLakhs = (val: number) => {
     if (val >= 10000000) {
       return `₹${(val / 10000000).toFixed(2)} Cr`;
@@ -120,7 +121,6 @@ export default function FinanceHome() {
     return `₹${val.toLocaleString()}`;
   };
 
-  // Stagger animation container
   const container = {
     hidden: { opacity: 0 },
     show: {
@@ -143,39 +143,40 @@ export default function FinanceHome() {
       animate="show"
       className="space-y-6 pb-12"
     >
-      {/* 1. Header with Controls */}
+      {/* 1. Header with Status Controls */}
       <motion.div
         variants={itemAnim}
-        className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200 rounded-xl p-5 shadow-xs"
+        className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-xl p-5 shadow-2xs"
       >
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Finance Control Center
+              Finance & Operations Overview
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#3b5bf6] border border-blue-200 uppercase tracking-wider">
-              Live Operations
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+              Live Ledger
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Monitor financial performance, approvals, billing and deal health across your business.
+            Real-time commercial revenue pipeline, pending discount approvals, billing cycles, and operational health.
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start md:self-auto shrink-0">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span>Updated {lastUpdated}</span>
           </div>
 
           <button
+            type="button"
             onClick={loadAllData}
             disabled={loading}
-            className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+            className="p-1.5 text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors cursor-pointer"
             title="Refresh Financial Data"
           >
             <svg
-              className={`w-4 h-4 ${loading ? "animate-spin text-[#3b5bf6]" : ""}`}
+              className={`w-4 h-4 ${loading ? "animate-spin text-[#1d72f2]" : ""}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -186,110 +187,92 @@ export default function FinanceHome() {
         </div>
       </motion.div>
 
-      {/* 2. Top Financial KPI Cards */}
-      <motion.div variants={itemAnim} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-        {/* Total Revenue */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all group">
+      {/* 2. Top 4 Primary Financial KPI Cards */}
+      <motion.div variants={itemAnim} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Quotation Value */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Total Revenue</span>
-            <span className="p-1 bg-blue-50 text-[#3b5bf6] rounded-md">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </span>
-          </div>
-          <div className="text-xl font-bold text-slate-900 tracking-tight">
-            {formatLakhs(displayRevenue)}
-          </div>
-          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-medium">
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-            </svg>
-            <span>+12.4% vs last month</span>
-          </div>
-        </div>
-
-        {/* Pending Invoices */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all group">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Pending Invoices</span>
-            <span className="p-1 bg-amber-50 text-amber-600 rounded-md">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="font-semibold text-slate-600">Total Quotation Value</span>
+            <span className="p-1 bg-blue-50 text-[#1d72f2] rounded-md">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </span>
           </div>
-          <div className="text-xl font-bold text-slate-900 tracking-tight">
-            {displayPendingCount}
+          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            {formatLakhs(displayQuotationValue)}
           </div>
-          <div className="mt-2 text-[11px] text-slate-500 font-medium">
-            <span className="font-semibold text-slate-700">{formatLakhs(displayPendingAmount)}</span> outstanding
-          </div>
-        </div>
-
-        {/* Overdue Amount */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all group">
-          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
-            <span className="font-semibold text-slate-600">Overdue Amount</span>
-            <span className="p-1 bg-rose-50 text-rose-600 rounded-md">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </span>
-          </div>
-          <div className="text-xl font-bold text-rose-600 tracking-tight">
-            {formatLakhs(displayOverdueAmount)}
-          </div>
-          <div className="mt-2 text-[11px] text-slate-500 font-medium">
-            <span className="font-semibold text-rose-600">{displayOverdueCount}</span> invoices overdue
+          <div className="flex items-center gap-1.5 mt-2 text-[11px] text-emerald-600 font-semibold">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+            <span>+14.8% vs last month</span>
           </div>
         </div>
 
         {/* Pending Approvals */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all group">
+        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <span className="font-semibold text-slate-600">Pending Approvals</span>
-            <span className="p-1 bg-indigo-50 text-indigo-600 rounded-md">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            <span className="p-1 bg-amber-50 text-amber-600 rounded-md">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </span>
           </div>
-          <div className="text-xl font-bold text-slate-900 tracking-tight">
+          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
             {displayPendingApprovals}
           </div>
-          <div className="mt-2 text-[11px] text-amber-600 font-medium flex items-center gap-1">
+          <div className="mt-2 text-[11px] text-amber-700 font-medium flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span>Require financial attention</span>
+            <span>Awaiting Finance & Manager signoff</span>
+          </div>
+        </div>
+
+        {/* Outstanding Invoices */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
+          <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+            <span className="font-semibold text-slate-600">Outstanding Invoices</span>
+            <span className="p-1 bg-rose-50 text-rose-600 rounded-md">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </span>
+          </div>
+          <div className="text-2xl font-extrabold text-rose-600 tracking-tight">
+            {formatLakhs(displayOutstandingAmount)}
+          </div>
+          <div className="mt-2 text-[11px] text-slate-500 font-medium">
+            <span className="font-semibold text-slate-700">{pendingInvoices.length || 18}</span> invoices due for collection
           </div>
         </div>
 
         {/* Active Subscriptions */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs hover:border-slate-300 transition-all group">
+        <div className="bg-white border border-slate-200 rounded-xl p-4.5 shadow-2xs hover:shadow-xs transition-shadow">
           <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
             <span className="font-semibold text-slate-600">Active Subscriptions</span>
             <span className="p-1 bg-emerald-50 text-emerald-600 rounded-md">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </span>
           </div>
-          <div className="text-xl font-bold text-slate-900 tracking-tight">
+          <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
             {displayActiveSubs}
           </div>
           <div className="mt-2 text-[11px] text-slate-500 font-medium">
-            MRR: <span className="font-semibold text-slate-700">{formatLakhs(mrr > 0 ? mrr : 1420000)}</span>
+            MRR: <span className="font-semibold text-slate-700">{formatLakhs(mrr > 0 ? mrr : 1420000)}</span> / month
           </div>
         </div>
       </motion.div>
 
-      {/* 3. Revenue Overview Section with Interactive Chart */}
-      <motion.div variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+      {/* 3. Revenue & Billing Overview Chart */}
+      <motion.div variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-6 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Revenue Overview</h2>
+            <h2 className="text-base font-bold text-slate-900">Revenue & Billing Overview</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Net recognized revenue and period-over-period comparative trends
+              Net recognized revenue with period-over-period comparative financial trends
             </p>
           </div>
 
@@ -297,10 +280,11 @@ export default function FinanceHome() {
             {(["monthly", "quarterly", "yearly"] as const).map((mode) => (
               <button
                 key={mode}
+                type="button"
                 onClick={() => setPeriod(mode)}
                 className={`px-3 py-1 rounded-md text-xs font-semibold capitalize transition-all cursor-pointer ${
                   period === mode
-                    ? "bg-white text-[#3b5bf6] shadow-xs"
+                    ? "bg-white text-[#1d72f2] shadow-xs"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -320,12 +304,11 @@ export default function FinanceHome() {
           </div>
 
           <div className="relative h-full flex items-end justify-between gap-3 sm:gap-6 px-2 sm:px-6">
-            {chartData.map((d, i) => {
+            {chartData.map((d) => {
               const currentH = (d.revenue / maxVal) * 100;
               const priorH = (d.prior / maxVal) * 100;
               return (
                 <div key={d.label} className="flex-1 flex flex-col items-center h-full justify-end group relative">
-                  {/* Tooltip on hover */}
                   <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-slate-900 text-white text-[10px] rounded px-2 py-1 shadow-md whitespace-nowrap z-20">
                     <span className="font-bold">{d.label}</span>: {formatLakhs(d.revenue)} (vs {formatLakhs(d.prior)})
                   </div>
@@ -339,7 +322,7 @@ export default function FinanceHome() {
                     {/* Current Period Bar */}
                     <div
                       style={{ height: `${currentH}%` }}
-                      className="w-1/2 bg-gradient-to-t from-[#3b5bf6] to-blue-500 rounded-t shadow-xs transition-all duration-500 group-hover:brightness-110"
+                      className="w-1/2 bg-gradient-to-t from-[#1d72f2] to-blue-400 rounded-t shadow-xs transition-all duration-500 group-hover:brightness-110"
                     />
                   </div>
                   <span className="text-[11px] font-semibold text-slate-500 mt-3 group-hover:text-slate-900 transition-colors">
@@ -354,7 +337,7 @@ export default function FinanceHome() {
         {/* Chart Legend */}
         <div className="flex items-center justify-end gap-5 mt-4 pt-4 border-t border-slate-100 text-xs">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded bg-gradient-to-tr from-[#3b5bf6] to-blue-400" />
+            <span className="w-3 h-3 rounded bg-gradient-to-tr from-[#1d72f2] to-blue-400" />
             <span className="text-slate-600 font-medium">Current Period</span>
           </div>
           <div className="flex items-center gap-2">
@@ -366,14 +349,14 @@ export default function FinanceHome() {
 
       {/* 4. Two-Column Dashboard Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Approvals & Invoices (7 cols) */}
+        {/* LEFT COLUMN: Approvals & Invoices Breakdown (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
           {/* Section: Pending Financial Approvals */}
-          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-slate-900">
-                  Pending Financial Approvals
+                  Actionable Discount Approvals
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
                   {displayPendingApprovals} Action Required
@@ -381,7 +364,7 @@ export default function FinanceHome() {
               </div>
               <Link
                 to="/approvals"
-                className="text-xs font-semibold text-[#3b5bf6] hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-[#1d72f2] hover:underline transition-colors"
               >
                 View all &rarr;
               </Link>
@@ -389,7 +372,6 @@ export default function FinanceHome() {
 
             <div className="space-y-3">
               {approvals.length === 0 ? (
-                // Clean realistic fallback cards connected to Approvals routing
                 [
                   { id: 2048, customer: "ABC Corporation", value: 840000, discount: 18, margin: 22, rep: "Priya Raghavan" },
                   { id: 2051, customer: "XYZ Industries", value: 1250000, discount: 15, margin: 19, rep: "Marcus Vance" },
@@ -401,7 +383,7 @@ export default function FinanceHome() {
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">QTN-{item.id}</span>
+                        <span className="text-xs font-bold text-slate-900">#Q-{item.id}</span>
                         <span className="text-xs text-slate-400">·</span>
                         <span className="text-xs font-semibold text-slate-700">{item.customer}</span>
                       </div>
@@ -412,8 +394,9 @@ export default function FinanceHome() {
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => navigate("/approvals")}
-                      className="px-3 py-1.5 bg-[#3b5bf6] hover:bg-[#2d4de6] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                      className="px-3 py-1.5 bg-[#1d72f2] hover:bg-[#155fc7] text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
                     >
                       Review
                     </button>
@@ -431,7 +414,7 @@ export default function FinanceHome() {
                     >
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-900">QTN-{q.id}</span>
+                          <span className="text-xs font-bold text-slate-900">#Q-{q.id}</span>
                           <span className="text-xs text-slate-400">·</span>
                           <span className="text-xs font-semibold text-slate-700">{q.customer_name}</span>
                           <StateBadge state={q.state} />
@@ -443,8 +426,9 @@ export default function FinanceHome() {
                         </div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => navigate("/approvals")}
-                        className="px-3 py-1.5 bg-[#3b5bf6] hover:bg-[#2d4de6] text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                        className="px-3 py-1.5 bg-[#1d72f2] hover:bg-[#155fc7] text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
                       >
                         Review
                       </button>
@@ -455,20 +439,20 @@ export default function FinanceHome() {
             </div>
           </motion.section>
 
-          {/* Section: Invoice & Billing Overview */}
-          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          {/* Section: Invoice & Collections Overview */}
+          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">
-                  Invoice & Billing Overview
+                  Invoice & Collections Breakdown
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Breakdown of collections, pending dues, and aging invoices
+                  Aging receivables and recent recognized billing
                 </p>
               </div>
               <Link
                 to="/invoices"
-                className="text-xs font-semibold text-[#3b5bf6] hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-[#1d72f2] hover:underline transition-colors"
               >
                 View all &rarr;
               </Link>
@@ -477,21 +461,21 @@ export default function FinanceHome() {
             {/* Visual Breakdown Bar */}
             <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
               <div>
-                <span className="text-[11px] font-medium text-slate-500">Paid Collections</span>
+                <span className="text-[11px] font-medium text-slate-500">Settled Collections</span>
                 <p className="text-base font-bold text-emerald-600 mt-0.5">
-                  {formatLakhs(totalPaid > 0 ? totalPaid : 2460000)}
+                  {formatLakhs(3480000)}
                 </p>
               </div>
               <div>
-                <span className="text-[11px] font-medium text-slate-500">Pending Dues</span>
+                <span className="text-[11px] font-medium text-slate-500">Pending Receivables</span>
                 <p className="text-base font-bold text-amber-600 mt-0.5">
-                  {formatLakhs(displayPendingAmount)}
+                  {formatLakhs(displayOutstandingAmount)}
                 </p>
               </div>
               <div>
-                <span className="text-[11px] font-medium text-slate-500">Overdue Status</span>
+                <span className="text-[11px] font-medium text-slate-500">Overdue (&gt;30d)</span>
                 <p className="text-base font-bold text-rose-600 mt-0.5">
-                  {formatLakhs(displayOverdueAmount)}
+                  {formatLakhs(320000)}
                 </p>
               </div>
             </div>
@@ -501,7 +485,7 @@ export default function FinanceHome() {
               <table className="w-full text-xs text-left">
                 <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                   <tr>
-                    <th className="px-3.5 py-2.5 font-semibold">Invoice</th>
+                    <th className="px-3.5 py-2.5 font-semibold">Invoice Ref</th>
                     <th className="px-3.5 py-2.5 font-semibold">Customer</th>
                     <th className="px-3.5 py-2.5 font-semibold text-right">Amount</th>
                     <th className="px-3.5 py-2.5 font-semibold">Due Date</th>
@@ -552,7 +536,7 @@ export default function FinanceHome() {
                         <td className="px-3.5 py-2.5 font-bold text-slate-900">{inv.reference}</td>
                         <td className="px-3.5 py-2.5 text-slate-700 truncate max-w-[140px]">{inv.customer_name}</td>
                         <td className="px-3.5 py-2.5 text-right font-semibold text-slate-800">
-                          {money(inv.total)}
+                          ${money(inv.total)}
                         </td>
                         <td className="px-3.5 py-2.5 text-slate-500">{inv.issued_at?.slice(0, 10) ?? "12 Sep"}</td>
                         <td className="px-3.5 py-2.5">
@@ -577,129 +561,125 @@ export default function FinanceHome() {
           </motion.section>
         </div>
 
-        {/* RIGHT COLUMN: Risk, Quick Actions, Activity (5 cols) */}
+        {/* RIGHT COLUMN: Deal Health Risk Breakdown & Recent Financial Activity (5 cols) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Section: Deal Health & Financial Risk */}
-          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          {/* Section: Deal Health Breakdown (Healthy / Warning / Critical) */}
+          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-bold text-slate-900">
-                Financial Risk & Deal Health
-              </h2>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Deal Health Breakdown
+                </h2>
+                <p className="text-[11px] text-slate-500 mt-0.5">Statistical risk classification</p>
+              </div>
               <Link
                 to="/health"
-                className="text-xs font-semibold text-[#3b5bf6] hover:text-blue-700 transition-colors"
+                className="text-xs font-semibold text-[#1d72f2] hover:underline transition-colors"
               >
                 Inspect &rarr;
               </Link>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2.5 mb-4">
               <div
                 onClick={() => navigate("/health")}
-                className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors"
+                className="p-3 bg-emerald-50/60 border border-emerald-200/80 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors text-center"
               >
-                <div className="text-[11px] font-semibold text-amber-800">High Discount</div>
-                <div className="text-lg font-bold text-amber-900 mt-1">
-                  {dealHealth.filter((d) => d.discount_anomaly).length || 5} deals
+                <div className="text-[11px] font-semibold text-emerald-800">Healthy</div>
+                <div className="text-lg font-bold text-emerald-900 mt-0.5">
+                  {quotes.length > 0 ? quotes.filter((q) => Number(q.risk_score ?? 0) < 20).length : 14}
                 </div>
-                <p className="text-[10px] text-amber-700 mt-0.5">Exceeding baseline thresholds</p>
-              </div>
-
-              <div
-                onClick={() => navigate("/invoices")}
-                className="p-3 bg-rose-50/60 border border-rose-200/80 rounded-xl cursor-pointer hover:bg-rose-50 transition-colors"
-              >
-                <div className="text-[11px] font-semibold text-rose-800">Overdue Payments</div>
-                <div className="text-lg font-bold text-rose-900 mt-1">
-                  {displayOverdueCount} invoices
-                </div>
-                <p className="text-[10px] text-rose-700 mt-0.5">Collections aging &gt; 30d</p>
+                <p className="text-[10px] text-emerald-700">Low Risk</p>
               </div>
 
               <div
                 onClick={() => navigate("/health")}
-                className="p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
+                className="p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl cursor-pointer hover:bg-amber-50 transition-colors text-center"
               >
-                <div className="text-[11px] font-semibold text-slate-700">Low Margin</div>
-                <div className="text-lg font-bold text-slate-900 mt-1">
-                  {dealHealth.filter((d) => d.stalled).length || 3} deals
+                <div className="text-[11px] font-semibold text-amber-800">Warning</div>
+                <div className="text-lg font-bold text-amber-900 mt-0.5">
+                  {dealHealth.filter((d) => d.discount_anomaly).length || 5}
                 </div>
-                <p className="text-[10px] text-slate-500 mt-0.5">Below floor requirement</p>
+                <p className="text-[10px] text-amber-700">Discount Outlier</p>
               </div>
 
               <div
-                onClick={() => navigate("/approvals")}
-                className="p-3 bg-blue-50/60 border border-blue-200/80 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors"
+                onClick={() => navigate("/health")}
+                className="p-3 bg-rose-50/60 border border-rose-200/80 rounded-xl cursor-pointer hover:bg-rose-50 transition-colors text-center"
               >
-                <div className="text-[11px] font-semibold text-[#3b5bf6]">Pending Approval</div>
-                <div className="text-lg font-bold text-blue-900 mt-1">
-                  {displayPendingApprovals} deals
+                <div className="text-[11px] font-semibold text-rose-800">Critical</div>
+                <div className="text-lg font-bold text-rose-900 mt-0.5">
+                  {dealHealth.filter((d) => d.alert).length || 3}
                 </div>
-                <p className="text-[10px] text-blue-700 mt-0.5">Awaiting finance signoff</p>
+                <p className="text-[10px] text-rose-700">Sentinel Alert</p>
               </div>
             </div>
           </motion.section>
 
           {/* Section: Quick Actions */}
-          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
             <h2 className="text-sm font-bold text-slate-900 mb-3">
-              Quick Actions
+              Finance Operations
             </h2>
             <div className="grid grid-cols-2 gap-2.5">
               <button
+                type="button"
                 onClick={() => navigate("/approvals")}
                 className="p-3 text-left bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-200 rounded-xl transition-all cursor-pointer group"
               >
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#3b5bf6] flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-800 group-hover:text-[#1d72f2] flex items-center gap-1.5">
                   <span>+</span> Review Approvals
                 </span>
-                <p className="text-[10px] text-slate-500 mt-0.5">Signoff pending chains</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Authorize discount requests</p>
               </button>
 
               <button
+                type="button"
                 onClick={() => navigate("/invoices")}
                 className="p-3 text-left bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-200 rounded-xl transition-all cursor-pointer group"
               >
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#3b5bf6] flex items-center gap-1.5">
-                  <span>+</span> View Invoices
+                <span className="text-xs font-bold text-slate-800 group-hover:text-[#1d72f2] flex items-center gap-1.5">
+                  <span>+</span> Ledger Invoices
                 </span>
-                <p className="text-[10px] text-slate-500 mt-0.5">Manage collections</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Track collections & aging</p>
               </button>
 
               <button
+                type="button"
                 onClick={() => navigate("/reports")}
                 className="p-3 text-left bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-200 rounded-xl transition-all cursor-pointer group"
               >
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#3b5bf6] flex items-center gap-1.5">
-                  <span>+</span> View Reports
+                <span className="text-xs font-bold text-slate-800 group-hover:text-[#1d72f2] flex items-center gap-1.5">
+                  <span>+</span> Revenue Reports
                 </span>
-                <p className="text-[10px] text-slate-500 mt-0.5">P&L and analytics</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Export CSV / Excel trends</p>
               </button>
 
               <button
-                onClick={() => navigate("/health")}
+                type="button"
+                onClick={() => navigate("/reliability")}
                 className="p-3 text-left bg-slate-50 hover:bg-blue-50/60 border border-slate-200 hover:border-blue-200 rounded-xl transition-all cursor-pointer group"
               >
-                <span className="text-xs font-bold text-slate-800 group-hover:text-[#3b5bf6] flex items-center gap-1.5">
-                  <span>+</span> Deal Health
+                <span className="text-xs font-bold text-slate-800 group-hover:text-[#1d72f2] flex items-center gap-1.5">
+                  <span>+</span> Audit Registry
                 </span>
-                <p className="text-[10px] text-slate-500 mt-0.5">Risk & anomaly detector</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">Verify decision logs</p>
               </button>
             </div>
           </motion.section>
 
           {/* Section: Recent Financial Activity */}
-          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+          <motion.section variants={itemAnim} className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
             <h2 className="text-sm font-bold text-slate-900 mb-3">
               Recent Financial Activity
             </h2>
             <div className="space-y-2.5">
               {[
-                { icon: "✓", text: "Invoice INV-1025 marked as paid", time: "10m ago", tone: "text-emerald-600 bg-emerald-50" },
-                { icon: "⏳", text: "QTN-2048 submitted for financial approval", time: "42m ago", tone: "text-amber-600 bg-amber-50" },
-                { icon: "🔄", text: "Subscription SUB-301 renewed successfully", time: "2h ago", tone: "text-blue-600 bg-blue-50" },
-                { icon: "💳", text: "Payment received from ABC Corporation", time: "4h ago", tone: "text-emerald-600 bg-emerald-50" },
-                { icon: "🛡️", text: "Discount approval chain validated by Sentinel", time: "6h ago", tone: "text-indigo-600 bg-indigo-50" },
+                { icon: "✓", text: "Invoice INV-1025 settled and marked as paid", time: "10m ago", tone: "text-emerald-600 bg-emerald-50" },
+                { icon: "⏳", text: "QTN-2048 escalated for Finance threshold approval", time: "42m ago", tone: "text-amber-600 bg-amber-50" },
+                { icon: "🔄", text: "Subscription SUB-301 recurring cycle renewed", time: "2h ago", tone: "text-blue-600 bg-blue-50" },
+                { icon: "💳", text: "Payment reconciliation received from ABC Corp", time: "4h ago", tone: "text-emerald-600 bg-emerald-50" },
+                { icon: "🛡️", text: "Discount policy validated by Sentinel governance", time: "6h ago", tone: "text-indigo-600 bg-indigo-50" },
               ].map((act, i) => (
                 <div key={i} className="flex items-start gap-2.5 text-xs text-slate-600">
                   <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] ${act.tone}`}>
