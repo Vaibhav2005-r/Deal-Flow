@@ -13,18 +13,39 @@ where this README and that file disagree, that file wins.
 | Phase | Gate | State |
 |---|---|---|
 | **1 — Foundation** | `make up` works everywhere | **partial** — see *Known gaps* |
-| **2 — Domain core** | `make test` green | **done** — 122 passing in 0.28s |
-| 3 — The spine | rep builds an over-ceiling quote, manager approves, in the browser | not started |
+| **2 — Domain core** | `make test` green | **done** |
+| **3 — The spine** | rep builds an over-ceiling quote, manager approves, in the browser | **done — driven in a real browser** |
 | 4 — Second ring | fulfillment split, subscriptions, upsell | not started |
 | 5 — The loop | portal counter → re-score → re-entry | not started |
 | 6 — Surface | dashboards, reporting, exports | not started |
 
-Phase 2 is complete and verified against every exact expected value in spec §10.
-
 ```
-122 passed in 0.28s          # full suite
+189 passed in 1.43s          # full suite
  60 passed in 0.03s          # tests/golden — the pre-push gate (budget: 2s)
+  0.40s                      # make demo-reset (budget: 10s)
 ```
+
+### The Phase 3 gate, actually executed
+
+Not asserted at the service boundary and called done — driven through the running
+UI against a live API and a seeded database:
+
+1. Priya (rep) signs in, picks a Gold customer, opens quote #202.
+2. She adds installation at **18%** against a **10%** ceiling. The builder warns
+   *before* she commits: "gold / Service ceiling is 10% — this line is 8.0pp over".
+   Governance is visible, not a trap sprung after the fact.
+3. Adding lines leaves the quote in `DRAFT`. It leaves `DRAFT` only via Confirm (§7).
+4. Confirm scores it: **BDRS 40.0**, verifier `PASS`, routed to `SALES_MANAGER`, with
+   the §5.1 explanation rendered verbatim —
+   *"On-Site Installation & Setup: 18% given vs 10% ceiling → 8.0pp over (contributes 32.0 of 40)"*.
+5. James (manager) signs in. The quote is in his queue with the breaching line
+   highlighted, its ceiling and margin beside it.
+6. He approves → `READY_TO_FULFILL`, queue empties.
+
+**Driving the real UI found a bug the API tests had missed:** adding a line to a
+`DRAFT` re-scored it and pushed it straight to `PENDING_MANAGER`, because
+`mutate_lines` re-scored unconditionally. §7's table says `DRAFT` leaves `DRAFT`
+only on `confirm`. Fixed, with a regression test.
 
 ---
 
@@ -79,6 +100,22 @@ reproduces the spec's 337.5 optimum exactly, with the plan it names.
 snapshot fields with plain arithmetic and imports no aggregate helper from
 `governance.py`. A copy-pasted re-check would agree with a bug; this one can disagree.
 
+### Phase 3 — the spine
+
+| Piece | Notes |
+|---|---|
+| `services/state_machine.py` | §7's transition table as **data**, not branching in routers |
+| `services/scoring.py` | one scoring implementation, shared by `confirm` and the re-score path |
+| `services/snapshots.py` | ORM → pure domain; resolves every ceiling from `discount_policy` |
+| `services/quote_lines.py` | the only module that may create, edit or delete a line |
+| `app/api/` | thin routers: build a Snapshot, call the domain, persist, return |
+| `app/seed.py` | 30 products · 12 customers · 3 warehouses · 200 historical orders |
+
+The seed is deterministic (fixed-seed PRNG, verified by fingerprint across runs) and
+its discount history is shaped to be *usable*: a typical discount scores robust-z ≈ 0
+against its rep's history while a 40% outlier scores ≈ +6.9, so the §5.5 detector has
+a real distribution to work against rather than uniform noise.
+
 ### Structural invariants, asserted as tests
 
 These are claims the spec makes that quietly become false under deadline pressure, so
@@ -92,6 +129,9 @@ each is a test rather than a convention:
 | no line edit bypasses re-scoring (§7) | `test_rescore_invariant.py` — AST walk |
 | the portal is not the internal screen with a flag (§1) | `test_portal_separation.py` |
 | BDRS beats the naive per-line rule | `test_case_b_beats_the_naive_rule` |
+| a DRAFT is never scored behind the rep's back | `test_adding_a_line_to_a_draft_does_not_score_it` |
+| an edit mid-chain re-scores too | `test_editing_a_quote_awaiting_approval_rescores_it` |
+| idempotency, optimistic concurrency, outbox | `tests/spine/test_self_governing.py` |
 
 ### `api/app/models/` — 27 tables (§6)
 
@@ -116,11 +156,19 @@ A hand-written 27-table migration that had never been executed would have been w
 than an honest gap — it would drift from the models silently.
 
 **2. `make up` is unverified.** Same reason: no Docker locally. The Compose file and
-Dockerfile are written but have not been executed. The API itself is verified to boot —
-`/health` and `/api/engines` respond 200 under `TestClient`.
+Dockerfile are written but have not been executed. Everything they would host *is*
+verified: the API serves the full spine under `uvicorn`, and the web client was driven
+against it in a browser.
 
-**3. Phases 3–6 are not started.** No routers beyond `/health` and `/api/engines`, no
-seed script, no UI beyond route placeholders.
+**3. Tests run on SQLite, production is PostgreSQL.** The column types are
+dialect-portable (`app/models/base.py`): `BIGSERIAL`/`JSONB` on Postgres, `INTEGER`/
+`JSON` on SQLite. Nothing under test is dialect-specific, so the spine tests exercise
+the real code path — but the Postgres-only surface (the `decision_log` append-only
+trigger, `JSONB` operators) is not yet covered by a test that runs against Postgres.
+
+**4. Phases 4–6 are not started.** No fulfillment, billing, advisor, sentinel wiring,
+portal UI, or reporting. The portal *router tree and auth scope* exist and are enforced
+(a portal token gets 403 on every internal route), but its screens are placeholders.
 
 ---
 
@@ -155,7 +203,7 @@ Both facts are pinned as tests, including
 changes the weighting without reading §5.1. Deciding whether to *change* the formula
 (e.g. weighting `margin_short` by list value rather than net) is a spec decision, so
 the implementation follows the spec and documents the deviation rather than silently
-divering from §10.
+diverging from §10.
 
 ---
 
@@ -169,3 +217,16 @@ divering from §10.
 
 Sentinel's output carries `tier: 1, writes_state: false` and is asserted in tests.
 Isolation Forest can supply a second vote but is never the sole reason for an alert.
+
+## One place we deliberately went beyond §7
+
+§7 lists three states in which a line edit must void approvals and re-score:
+`READY_TO_FULFILL`, `SENT`, `UNDER_NEGOTIATION` — the states *after* the chain
+completes. We also cover the two mid-chain states, `PENDING_MANAGER` and
+`PENDING_FINANCE`.
+
+The reason: §7's stated purpose is that no approval survives an edit. A quote sitting
+in `PENDING_MANAGER` has a live pending step, so editing it without re-scoring would
+let an approver sign off terms that changed under them — the same hole §7 exists to
+close. This **widens** the guarantee and never narrows it; `DRAFT` remains excluded,
+because a draft has no approvals to void.
