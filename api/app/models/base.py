@@ -19,16 +19,14 @@ Percent = Numeric(5, 2)
 # --------------------------------------------------------------------------
 # Dialect-portable column types.
 #
-# Production is PostgreSQL 16 (§2) and stays exactly that: these render as
-# BIGSERIAL and JSONB there, unchanged.  The SQLite variants exist so the whole
-# spine — seed, routers, state machine — can be executed and asserted in tests
-# without a database server, which is what makes the Phase 3 gate verifiable on
-# a laptop.  SQLite only autoincrements a column declared INTEGER PRIMARY KEY,
-# hence the BigInteger variant.
+# Primary production database is MySQL 8.x (using BIGINT AUTO_INCREMENT and JSON).
+# SQLite variants exist so tests can execute without an external DB.
+# PostgreSQL JSONB is also retained as a dialect variant.
 # --------------------------------------------------------------------------
 PK = BigInteger().with_variant(Integer(), "sqlite")
 FK = BigInteger().with_variant(Integer(), "sqlite")
-JSONColumn = JSONB().with_variant(JSON(), "sqlite")
+JSONColumn = JSON().with_variant(JSONB(), "postgresql")
+
 
 
 class Base(DeclarativeBase):

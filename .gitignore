@@ -16,3 +16,4 @@ build/
 .vscode/
 *.tsbuildinfo
 dealflow_backup_*
+*.db

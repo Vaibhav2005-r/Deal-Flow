@@ -32,6 +32,8 @@ BANNED_MODULES = {
     "alembic",
     "psycopg",
     "psycopg2",
+    "pymysql",
+    "MySQLdb",
     "sklearn",
     "mlxtend",
 }
