@@ -9,7 +9,7 @@ import {
   type Quote,
   type Score,
 } from "@/lib/api";
-import { ApprovalTrail, LineTable, RiskBadge, StateBadge } from "./components";
+import { ApprovalTrail, LineTable, RiskBadge, StateBadge, currency } from "./components";
 import UpsellPanel from "./UpsellPanel";
 
 export default function QuoteBuilder() {
@@ -562,7 +562,7 @@ export default function QuoteBuilder() {
               <p className="text-sm text-slate-600">
                 Net total{" "}
                 <span className="font-semibold text-slate-900 tabular-nums">
-                  ₹{new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
+                  {currency(quote.totals.net_total)}
                 </span>
                 <span className="text-slate-400"> · </span>
                 Order margin{" "}
@@ -635,7 +635,7 @@ export default function QuoteBuilder() {
                   className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-0.5 rounded"
                   title="Every line is within its ceiling, so the score is low — but the order concedes enough value to need a human"
                 >
-                  VALUE REVIEW · {new Intl.NumberFormat("en-IN").format(score.concession)} conceded
+                  VALUE REVIEW · {currency(score.concession)} conceded
                 </span>
               )}
               {quote?.risk_band && (

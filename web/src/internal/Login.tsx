@@ -12,19 +12,9 @@ import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 import { DealFlowLogo } from "@/components/Logo";
 
-interface RoleOption {
-  id: "rep" | "manager" | "finance";
-  label: string;
-}
-
-/**
- * Only what self-service registration can actually grant.
- *
- * Offering Manager and Finance told the user they were creating an approver
- * account while the server (correctly) created a rep. Approver roles are
- * granted by an existing admin.
- */
-const ROLES: RoleOption[] = [{ id: "rep", label: "Sales Rep" }];
+/* Roles are not chosen at sign-in or sign-up. The server grants them:
+   sign-in derives the role from the account, and registration always creates
+   a rep. See app/domain/capabilities.py. */
 
 /**
  * No demo credentials.
@@ -36,7 +26,6 @@ const ROLES: RoleOption[] = [{ id: "rep", label: "Sales Rep" }];
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
-  const [selectedRole, setSelectedRole] = useState<"rep" | "manager" | "finance">("rep");
   const [fullName, setFullName] = useState<string>("");
   // start empty: a prefilled real login is still a published credential
   const [email, setEmail] = useState<string>("");
@@ -76,15 +65,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mouseX, mouseY, shouldReduceMotion]);
-
-  const handleSelectRole = (role: "rep" | "manager" | "finance") => {
-    setSelectedRole(role);
-    setError(null);
-    setSuccessMessage(null);
-    setToastMessage(null);
-
-  };
+  }, [mouseX, mouseY, shouldReduceMotion]);;
 
   const handleTabChange = (tab: "signin" | "create") => {
     setActiveTab(tab);
@@ -286,31 +267,26 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               </AnimatePresence>
             </motion.div>
 
-            {/* Role Selector Pills with Framer Motion layoutId */}
-            <motion.div variants={itemVariants} className="grid grid-cols-3 gap-2 mb-4 p-0.5 bg-slate-100/70 rounded-xl">
-              {ROLES.map((roleItem) => {
-                const isSelected = selectedRole === roleItem.id;
-                return (
-                  <button
-                    key={roleItem.id}
-                    type="button"
-                    onClick={() => handleSelectRole(roleItem.id)}
-                    className={`relative py-1.5 px-2 rounded-lg text-center font-semibold text-xs transition-colors duration-200 capitalize z-10 cursor-pointer ${
-                      isSelected ? "text-[#3b5bf6]" : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    {isSelected && (
-                      <motion.div
-                        layoutId="activeRoleIndicator"
-                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/90 z-[-1]"
-                        transition={{ type: "spring", stiffness: 360, damping: 30 }}
-                      />
-                    )}
-                    {roleItem.label}
-                  </button>
-                );
-              })}
-            </motion.div>
+            {/* No role picker on sign-in.
+                The server derives both the role AND the scope from the account,
+                so every rep, manager, finance user, admin and customer signs in
+                with the same two fields. A lone "Sales Rep" pill implied you had
+                to choose one, and that choosing wrong would fail. */}
+            {activeTab === "signin" ? (
+              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
+                <p className="text-xs text-slate-600 text-center leading-relaxed">
+                  Sales, manager, finance, admin <strong>and customer</strong> accounts
+                  all sign in here — you land in the right workspace automatically.
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
+                <p className="text-xs text-slate-600 text-center leading-relaxed">
+                  New accounts are created as a <strong>Sales Rep</strong>. Approver
+                  and admin access is granted by an administrator, never claimed here.
+                </p>
+              </motion.div>
+            )}
 
             {/* Feedback & Error Message Banners with Shake Animation */}
             <AnimatePresence>
@@ -604,6 +580,25 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   </button>
                 </p>
               )}
+            </motion.div>
+
+            {/* Customers can sign in above with the same two fields — the server
+                routes them to /portal on its own.  This is the signposted door
+                for the ones who arrive from a quotation link and are looking
+                for it. */}
+            <motion.div
+              variants={itemVariants}
+              className="mt-4 pt-4 border-t border-slate-200/80 text-center"
+            >
+              <p className="text-[11px] text-slate-500">
+                Viewing a quotation we sent you?{" "}
+                <a
+                  href="/portal/login"
+                  className="font-bold text-[#3b5bf6] hover:text-[#2d4de6] hover:underline transition-colors"
+                >
+                  Customer Portal
+                </a>
+              </p>
             </motion.div>
           </motion.div>
         </motion.div>

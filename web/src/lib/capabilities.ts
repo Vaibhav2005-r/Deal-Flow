@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
-import type { Scope } from "./auth";
+import { tokenFor, type Scope } from "./auth";
 
 /**
  * What the signed-in user may do, as decided by the server.
@@ -37,14 +37,23 @@ export function useMe(scope: Scope = "internal") {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Keyed on the token, not just the scope. The routers call this on mount,
+  // which happens while the user is still signed out — that request 401s, and
+  // with `[scope]` deps nothing ever asked again, so capabilities stayed empty
+  // for the rest of the session. Signing in changes the token, which re-runs
+  // this; signing out clears it, which drops `me` back to null.
+  const token = tokenFor(scope);
+
   useEffect(() => {
+    if (!token) { setMe(null); setLoading(false); return; }
     let alive = true;
+    setLoading(true);
     api.get<Me>("/api/me", scope)
       .then((m) => { if (alive) setMe(m); })
       .catch(() => { if (alive) setMe(null); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [scope]);
+  }, [scope, token]);
 
   const can = (c: Capability) => !!me?.capabilities.includes(c);
   return { me, loading, can };

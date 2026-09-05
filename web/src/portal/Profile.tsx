@@ -1,5 +1,6 @@
 import { api, type PortalProfile } from "@/lib/api";
 import { useLiveData } from "@/lib/live";
+import { currency } from "@/lib/money";
 
 /**
  * Screen 11, Profile tab.
@@ -34,9 +35,6 @@ export default function Profile() {
     </div>
   );
 
-  const money = (v: string) =>
-    new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(Number(v));
-
   return (
     <div className="space-y-5" data-testid="portal-profile">
       <div>
@@ -64,7 +62,7 @@ export default function Profile() {
             ["Quotations", String(data.totals.quotations)],
             ["Open now", String(data.totals.open_quotations)],
             ["Invoices", String(data.totals.invoices)],
-            ["Outstanding", money(data.totals.outstanding)],
+            ["Outstanding", currency(data.totals.outstanding)],
           ].map(([label, value]) => (
             <div key={label}>
               <p className="text-xs text-slate-500">{label}</p>

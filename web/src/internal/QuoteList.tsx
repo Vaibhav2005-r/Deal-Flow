@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { api, type Quote } from "@/lib/api";
-import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, money } from "./components";
+import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, currency } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
 interface ColumnDef {
@@ -235,7 +235,7 @@ export default function QuoteList() {
             <>
               <span>Total: <strong className="text-slate-800 font-bold">{filteredQuotes.length}</strong> quotes</span>
               <span className="text-slate-300">·</span>
-              <span>Value: <strong className="text-[#1d72f2] font-bold">${money(totalPipelineValue)}</strong></span>
+              <span>Value: <strong className="text-[#1d72f2] font-bold">{currency(totalPipelineValue)}</strong></span>
             </>
           )}
         </div>
@@ -295,7 +295,7 @@ export default function QuoteList() {
 
                             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                               <span className="text-xs font-extrabold text-slate-900 tabular-nums">
-                                ${money(netVal as string)}
+                                {currency(netVal as string)}
                               </span>
                               <RiskBadge score={q.risk_score ? Number(q.risk_score) : null} />
                             </div>
@@ -353,7 +353,7 @@ export default function QuoteList() {
                         {q.totals?.line_count}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                        ${money(q.totals?.net_total as string)}
+                        {currency(q.totals?.net_total as string)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Link

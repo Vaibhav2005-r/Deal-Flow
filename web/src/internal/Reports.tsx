@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ReportingMetrics } from "@/lib/api";
 import { useAutoRefresh } from "@/lib/live";
+import { currency } from "@/lib/money";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
@@ -39,10 +40,8 @@ export default function Reports() {
     loadMetrics();
   }, [period, selectedRep, selectedState, selectedCategory, tick]);
 
-  function formatMoney(val: string | number) {
-    const n = Number(val);
-    return isNaN(n) ? String(val) : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
+  const formatMoney = (val: string | number) =>
+    isNaN(Number(val)) ? String(val) : currency(val);
 
   function handleExport(format: "csv" | "xls") {
     const params = new URLSearchParams();

@@ -10,7 +10,7 @@ import {
   Pagination,
   RiskBadge,
   StateBadge,
-  money,
+  currency,
 } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
@@ -125,7 +125,7 @@ export default function Approvals() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">
-                      ${money(q.totals?.net_total as string)}
+                      {currency(q.totals?.net_total as string)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -169,7 +169,7 @@ export default function Approvals() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {q.totals?.line_count} line items · Net Total: ${money(q.totals?.net_total as string)}
+                  {q.totals?.line_count} line items · Net Total: {currency(q.totals?.net_total as string)}
                 </p>
               </div>
 

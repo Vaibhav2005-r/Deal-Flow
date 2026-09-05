@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type PlanRow, type WarehouseRow } from "@/lib/api";
 import { useLiveData } from "@/lib/live";
-import { EmptyRow, ErrorBanner, PageHeader, StatCard, money } from "./components";
+import { EmptyRow, ErrorBanner, PageHeader, StatCard, currency } from "./components";
 
 /**
  * §A4 and §A5 — warehouse and subscription-plan configuration.
@@ -23,7 +23,9 @@ export default function Operations() {
     () => api.get<PlanRow[]>("/api/admin/subscription-plans"), [], 30_000,
   );
 
-  const [wh, setWh] = useState({ code: "", name: "", unit_ship_cost: "2.5" });
+  // Blank, not "2.5" — a prefilled shipping cost is an invented figure that
+  // gets saved for real if the admin tabs past it.
+  const [wh, setWh] = useState({ code: "", name: "", unit_ship_cost: "" });
   const [plan, setPlan] = useState({ name: "", interval: "monthly" });
 
   async function run(fn: () => Promise<unknown>, ok: string) {
@@ -76,8 +78,8 @@ export default function Operations() {
               <tr key={w.id} className="border-b border-slate-100">
                 <td className="py-2 font-medium">{w.code}</td>
                 <td className="py-2">{w.name}</td>
-                <td className="py-2 text-right tabular-nums">{money(w.unit_ship_cost)}</td>
-                <td className="py-2 text-right tabular-nums">{money(w.ship_fixed_cost)}</td>
+                <td className="py-2 text-right tabular-nums">{currency(w.unit_ship_cost)}</td>
+                <td className="py-2 text-right tabular-nums">{currency(w.ship_fixed_cost)}</td>
                 <td className="py-2 text-right tabular-nums text-slate-500">{w.sku_count}</td>
                 <td className="py-2 text-right tabular-nums">{w.units_on_hand}</td>
                 <td className="py-2 text-right tabular-nums text-indigo-700">{w.units_reserved}</td>

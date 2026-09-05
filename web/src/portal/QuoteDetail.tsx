@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type PortalLine, type PortalMessage, type PortalQuoteDetail } from "@/lib/api";
+import { currency } from "@/lib/money";
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>();
@@ -71,12 +72,8 @@ export default function QuoteDetail() {
     loadData();
   }, [id]);
 
-  function formatCurrency(val: string | number) {
-    const n = Number(val);
-    return isNaN(n)
-      ? String(val)
-      : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
+  const formatCurrency = (val: string | number) =>
+    isNaN(Number(val)) ? String(val) : currency(val);
 
   /**
    * Submit Negotiation Request (Screen 11 `[ Submit Request ]` button).

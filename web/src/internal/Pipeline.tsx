@@ -11,7 +11,7 @@ import {
 } from "@/lib/api";
 import { StateBadge } from "./components";
 
-import { money } from "./components";
+import { currency } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
 
@@ -318,7 +318,7 @@ export default function Pipeline() {
                     data-testid="record-payment"
                     className="bg-emerald-700 hover:bg-emerald-800 text-white rounded px-3 py-1.5 text-xs font-semibold shadow-xs"
                   >
-                    5. Record payment of ₹{money(due.outstanding)}
+                    5. Record payment of {currency(due.outstanding)}
                   </button>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -368,7 +368,7 @@ export default function Pipeline() {
               ) : billing.one_time_lines.map((ln) => (
                 <div key={ln.product_id} className="flex justify-between text-sm py-1 border-b border-slate-100">
                   <span>{ln.product_name} <span className="text-slate-400">×{ln.qty}</span></span>
-                  <span className="tabular-nums">{money(ln.amount)}</span>
+                  <span className="tabular-nums">{currency(ln.amount)}</span>
                 </div>
               ))}
             </div>
@@ -381,7 +381,7 @@ export default function Pipeline() {
               ) : billing.recurring_lines.map((ln) => (
                 <div key={ln.product_id} className="flex justify-between text-sm py-1 border-b border-slate-100">
                   <span>{ln.product_name} <span className="text-slate-400">×{ln.qty}</span></span>
-                  <span className="tabular-nums">{money(ln.amount)}</span>
+                  <span className="tabular-nums">{currency(ln.amount)}</span>
                 </div>
               ))}
               {billing.subscription && (
@@ -456,7 +456,7 @@ export default function Pipeline() {
                   )}
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Total Logistics Cost: <strong className="text-slate-800">₹{money(fulfillment.plan.total_cost)}</strong> ·
+                  Total Logistics Cost: <strong className="text-slate-800">{currency(fulfillment.plan.total_cost)}</strong> ·
                   Shipments: <strong className="text-slate-800">{fulfillment.plan.shipment_count}</strong>
                 </p>
               </div>
@@ -722,20 +722,20 @@ export default function Pipeline() {
                   #{inv.id} · {inv.kind.replace("_", " ")}
                   {inv.period_key && <span className="text-slate-400"> · {inv.period_key}</span>}
                 </span>
-                <span className="tabular-nums">{money(inv.total)} · {inv.status}</span>
+                <span className="tabular-nums">{currency(inv.total)} · {inv.status}</span>
               </div>
               {inv.credit_notes.map((c, i) => (
                 <p key={i} className="text-xs text-amber-700 mt-1">
-                  credit note −{money(c.amount)} · {c.reason}
+                  credit note −{currency(c.amount)} · {c.reason}
                 </p>
               ))}
             </div>
           ))}
           {due && (
             <p className="text-sm text-slate-600 mt-2" data-testid="amount-due">
-              billed {money(due.billed)} · credited {money(due.credited)} · due{" "}
-              <strong>{money(due.amount_due)}</strong> · paid {money(due.paid)} ·
-              outstanding <strong>{money(due.outstanding)}</strong>
+              billed {currency(due.billed)} · credited {currency(due.credited)} · due{" "}
+              <strong>{currency(due.amount_due)}</strong> · paid {currency(due.paid)} ·
+              outstanding <strong>{currency(due.outstanding)}</strong>
             </p>
           )}
         </section>

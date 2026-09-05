@@ -114,11 +114,10 @@ export function RiskBadge({ score }: { score: number | null }) {
   );
 }
 
-const nf = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-export const money = (v: string | number | null | undefined) => {
-  if (v === null || v === undefined) return "0.00";
-  return nf.format(Number(v));
-};
+// Re-exported so the many `from "./components"` call sites keep working; the
+// definitions live in @/lib/money, which the portal can import too.
+import { currency } from "@/lib/money";
+export { money, currency } from "@/lib/money";
 
 export function LineTable({
   lines,
@@ -156,7 +155,7 @@ export function LineTable({
                 <span className="block text-[11px] text-slate-400">{ln.category}</span>
               </td>
               <td className="py-2.5 px-3 text-right font-medium text-slate-700">{ln.qty}</td>
-              <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">${money(ln.list_value)}</td>
+              <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">{currency(ln.list_value)}</td>
               <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
                 {Number(ln.discount_pct).toFixed(1)}%
               </td>
@@ -167,7 +166,7 @@ export function LineTable({
                 {ln.margin_pct ? `${Number(ln.margin_pct).toFixed(1)}%` : "—"}
               </td>
               <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
-                ${money(ln.net_value)}
+                {currency(ln.net_value)}
               </td>
               <td className="py-2.5 px-3">
                 {ln.breaches_ceiling ? (

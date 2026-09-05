@@ -40,11 +40,16 @@ export default function InternalRouter() {
    * a role name matched in the client. A rep and a manager differ by more than
    * "is finance", and a UI that decides for itself which role sees which link
    * drifts from what the API actually permits — invisibly, until someone
-   * clicks. `can` falls back to the old role check only while /api/me is still
-   * in flight, so the first paint is never wrong in the other direction.
+   * clicks.
+   *
+   * Every link is gated on `can` alone, which is false until /api/me answers.
+   * The previous `ready ? can(x) : true` fallback failed OPEN: /api/me is
+   * requested when this router mounts, which is while the user is still signed
+   * out, so it 401'd and `me` stayed null — and a rep saw Approvals, Config
+   * and Audit for the whole session. A nav that appears one paint late is
+   * better than one that offers links the API will refuse.
    */
-  const { can, me } = useMe("internal");
-  const ready = !!me;
+  const { can } = useMe("internal");
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -141,8 +146,8 @@ export default function InternalRouter() {
               <span>Home</span>
             </NavLink>
 
-            {/* Non-Finance Only: Build Quote */}
-            {!isFinance && (
+            {/* 1. Build Quote */}
+            {can("build_quote") && (
               <NavLink to="/build" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
@@ -152,7 +157,7 @@ export default function InternalRouter() {
             )}
 
             {/* 2. Quotations */}
-            {(ready ? can("view_quotes") : true) && (
+            {can("view_quotes") && (
               <NavLink to="/quotes" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -162,7 +167,7 @@ export default function InternalRouter() {
             )}
 
             {/* 3. Approvals */}
-            {(ready ? can("view_approvals") : true) && (
+            {can("view_approvals") && (
               <NavLink to="/approvals" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -171,8 +176,8 @@ export default function InternalRouter() {
               </NavLink>
             )}
 
-            {/* Non-Finance Only: Fulfillment */}
-            {!isFinance && (
+            {/* 3. Fulfillment */}
+            {can("view_fulfillment") && (
               <NavLink to="/fulfillment" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -182,7 +187,7 @@ export default function InternalRouter() {
             )}
 
             {/* 4. Subscriptions */}
-            {(ready ? can("manage_subscriptions") : true) && (
+            {can("manage_subscriptions") && (
               <NavLink to="/subscriptions" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -192,7 +197,7 @@ export default function InternalRouter() {
             )}
 
             {/* 5. Invoices */}
-            {(ready ? can("view_invoices") : true) && (
+            {can("view_invoices") && (
               <NavLink to="/invoices" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
@@ -202,7 +207,7 @@ export default function InternalRouter() {
             )}
 
             {/* 6. Deal Health */}
-            {(ready ? can("view_deal_health") : true) && (
+            {can("view_deal_health") && (
               <NavLink to="/health" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -212,7 +217,7 @@ export default function InternalRouter() {
             )}
 
             {/* 7. Reports */}
-            {(ready ? can("view_reports") : true) && (
+            {can("view_reports") && (
               <NavLink to="/reports" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -221,27 +226,38 @@ export default function InternalRouter() {
               </NavLink>
             )}
 
-            {/* Non-Finance Only: Products/Catalog, Pipeline, Config */}
-            {!isFinance && (
-              <>
-                <NavLink to="/catalog" className={tab}>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <span>Products</span>
-                </NavLink>
-                <span className="w-px h-4 bg-slate-200 mx-1 self-center shrink-0" />
-                <NavLink to="/pipeline" className={tab}>
-                  <span>Pipeline</span>
-                </NavLink>
-                <NavLink to="/discount-config" className={tab}>
-                  <span>Config</span>
-                </NavLink>
-              </>
+            {/* Products/Catalog, Pipeline, Config.  These were gated on
+                `!isFinance`, so every non-finance role got all three — a rep
+                has neither manage_catalog nor configure_discounts. Same
+                capabilities as the desktop row above. */}
+            {can("manage_catalog") && (
+              <NavLink to="/catalog" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                <span>Products</span>
+              </NavLink>
+            )}
+            {can("view_fulfillment") && (
+              <NavLink to="/pipeline" className={tab}>
+                <span>Pipeline</span>
+              </NavLink>
+            )}
+            {can("configure_discounts") && (
+              <NavLink to="/discount-config" className={tab}>
+                <span>Config</span>
+              </NavLink>
+            )}
+            {/* Warehouses (§A4) and subscription plans (§A5) had a screen and a
+                route but no link in this nav — only in the mobile drawer. */}
+            {can("manage_catalog") && (
+              <NavLink to="/operations" className={tab}>
+                <span>Ops</span>
+              </NavLink>
             )}
 
             {/* 8. Audit */}
-            {(ready ? can("view_audit_log") : true) && (
+            {can("view_audit_log") && (
               <NavLink to="/reliability" className={tab}>
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -423,19 +439,19 @@ export default function InternalRouter() {
             </div>
             <div className="grid grid-cols-2 gap-1" onClick={() => setMobileNavOpen(false)}>
               <NavLink to="/" end className={tab}>Home</NavLink>
-              {(ready ? can("build_quote") : !isFinance) && <NavLink to="/build" className={tab}>Build Quote</NavLink>}
-              {(ready ? can("view_quotes") : true) && <NavLink to="/quotes" className={tab}>Quotations</NavLink>}
-              {(ready ? can("view_approvals") : true) && <NavLink to="/approvals" className={tab}>Approvals</NavLink>}
-              {(ready ? can("view_fulfillment") : !isFinance) && <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>}
-              {(ready ? can("manage_subscriptions") : true) && <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>}
-              {(ready ? can("view_invoices") : true) && <NavLink to="/invoices" className={tab}>Invoices</NavLink>}
-              {(ready ? can("view_deal_health") : true) && <NavLink to="/health" className={tab}>Deal Health</NavLink>}
-              {(ready ? can("view_reports") : true) && <NavLink to="/reports" className={tab}>Reports</NavLink>}
-              {(ready ? can("manage_catalog") : !isFinance) && <NavLink to="/catalog" className={tab}>Products</NavLink>}
-              {(ready ? can("view_fulfillment") : !isFinance) && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
-              {(ready ? can("configure_discounts") : !isFinance) && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
-              {(ready ? can("manage_catalog") : !isFinance) && <NavLink to="/operations" className={tab}>Ops</NavLink>}
-              {(ready ? can("view_audit_log") : true) && <NavLink to="/reliability" className={tab}>Audit</NavLink>}
+              {can("build_quote") && <NavLink to="/build" className={tab}>Build Quote</NavLink>}
+              {can("view_quotes") && <NavLink to="/quotes" className={tab}>Quotations</NavLink>}
+              {can("view_approvals") && <NavLink to="/approvals" className={tab}>Approvals</NavLink>}
+              {can("view_fulfillment") && <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>}
+              {can("manage_subscriptions") && <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>}
+              {can("view_invoices") && <NavLink to="/invoices" className={tab}>Invoices</NavLink>}
+              {can("view_deal_health") && <NavLink to="/health" className={tab}>Deal Health</NavLink>}
+              {can("view_reports") && <NavLink to="/reports" className={tab}>Reports</NavLink>}
+              {can("manage_catalog") && <NavLink to="/catalog" className={tab}>Products</NavLink>}
+              {can("view_fulfillment") && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
+              {can("configure_discounts") && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
+              {can("manage_catalog") && <NavLink to="/operations" className={tab}>Ops</NavLink>}
+              {can("view_audit_log") && <NavLink to="/reliability" className={tab}>Audit</NavLink>}
             </div>
           </div>
         )}

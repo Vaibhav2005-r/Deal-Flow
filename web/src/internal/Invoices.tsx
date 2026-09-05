@@ -7,7 +7,7 @@ import {
   PageHeader,
   Pagination,
   StatCard,
-  money,
+  currency,
 } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
@@ -118,18 +118,18 @@ export default function Invoices() {
         />
         <StatCard
           label="Total Billed"
-          value={`$${money(summary?.total_billed ?? "0")}`}
+          value={currency(summary?.total_billed ?? "0")}
           hint="Gross ledger billed"
         />
         <StatCard
           label="Total Paid"
-          value={`$${money(summary?.total_paid ?? "0")}`}
+          value={currency(summary?.total_paid ?? "0")}
           tone="emerald"
           hint={`${summary?.paid_invoices ?? 0} invoices settled`}
         />
         <StatCard
           label="Total Outstanding"
-          value={`$${money(summary?.total_outstanding ?? "0")}`}
+          value={currency(summary?.total_outstanding ?? "0")}
           tone={Number(summary?.total_outstanding ?? 0) > 0 ? "amber" : "emerald"}
           hint={`${summary?.unpaid_invoices ?? 0} invoices pending`}
         />
@@ -177,14 +177,14 @@ export default function Invoices() {
                       {r.period_key && <span className="text-slate-400"> · {r.period_key}</span>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">
-                      ${money(r.total)}
+                      {currency(r.total)}
                     </td>
                     <td
                       className={`px-4 py-3 text-right tabular-nums font-semibold ${
                         Number(r.outstanding) > 0 ? "text-amber-700" : "text-slate-400"
                       }`}
                     >
-                      ${money(r.outstanding)}
+                      {currency(r.outstanding)}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -324,10 +324,10 @@ function InvoiceDetail({
                   <td className="py-2.5 px-3 font-semibold text-slate-800">{ln.description}</td>
                   <td className="py-2.5 px-3 text-right font-medium text-slate-700">{ln.qty}</td>
                   <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">
-                    ${money(ln.unit_price)}
+                    {currency(ln.unit_price)}
                   </td>
                   <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
-                    ${money(ln.amount)}
+                    {currency(ln.amount)}
                   </td>
                 </tr>
               ))}
@@ -341,7 +341,7 @@ function InvoiceDetail({
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 space-y-1">
           {invoice.credit_notes.map((c, i) => (
             <p key={i} className="font-medium">
-              Credit Note: −${money(c.amount)} · Reason: {c.reason}
+              Credit Note: −{currency(c.amount)} · Reason: {c.reason}
             </p>
           ))}
         </div>
@@ -351,7 +351,7 @@ function InvoiceDetail({
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
           {invoice.payments.map((p, i) => (
             <p key={i} className="font-medium">
-              Payment Confirmed: ${money(p.amount)} via {p.method} ({p.paid_at})
+              Payment Confirmed: {currency(p.amount)} via {p.method} ({p.paid_at})
             </p>
           ))}
         </div>
@@ -360,10 +360,10 @@ function InvoiceDetail({
       {/* Summary Footer */}
       <div className="flex flex-wrap items-center justify-end gap-6 border-t border-slate-100 pt-4 text-xs">
         <span className="text-slate-500">
-          Total Billed: <strong className="text-slate-900 font-bold ml-1">${money(invoice.total)}</strong>
+          Total Billed: <strong className="text-slate-900 font-bold ml-1">{currency(invoice.total)}</strong>
         </span>
         <span className="text-slate-500">
-          Total Paid: <strong className="text-slate-900 font-bold ml-1">${money(invoice.paid)}</strong>
+          Total Paid: <strong className="text-slate-900 font-bold ml-1">{currency(invoice.paid)}</strong>
         </span>
         <span className="text-slate-500">
           Balance Outstanding:{" "}
@@ -372,7 +372,7 @@ function InvoiceDetail({
               Number(invoice.outstanding) > 0 ? "text-amber-700" : "text-emerald-700"
             }`}
           >
-            ${money(invoice.outstanding)}
+            {currency(invoice.outstanding)}
           </strong>
         </span>
       </div>

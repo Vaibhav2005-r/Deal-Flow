@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type PendingOrder, type StockRow } from "@/lib/api";
 import { EmptyRow, ErrorBanner, PageHeader, Pagination, StatCard, StateBadge } from "./components";
 import { useAutoRefresh } from "@/lib/live";
+import { currency } from "@/lib/money";
 
 /** Screen 7 — Fulfillment and Stock. Live stock per warehouse, plus every
  *  order still waiting to ship. */
@@ -147,7 +148,7 @@ export default function FulfillmentList() {
                   )}
                 </td>
                 <td className="py-2.5 text-right tabular-nums font-semibold text-slate-800">
-                  {new Intl.NumberFormat("en-IN").format(Number(o.net_total))}
+                  {currency(o.net_total)}
                 </td>
                 <td className="py-2.5 text-right">
                   <Link

@@ -7,7 +7,7 @@ import {
   PageHeader,
   Pagination,
   StatCard,
-  money,
+  currency,
 } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
@@ -89,7 +89,7 @@ export default function Subscriptions() {
         />
         <StatCard
           label="Active Recurring MRR"
-          value={`$${money(mrr)}`}
+          value={currency(mrr)}
           tone="emerald"
           hint="Per active billing cycle"
         />
@@ -137,7 +137,7 @@ export default function Subscriptions() {
                       {r.next_bill_date}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums font-bold text-slate-900">
-                      ${money(r.amount)}
+                      {currency(r.amount)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span

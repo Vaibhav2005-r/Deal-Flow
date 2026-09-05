@@ -3,8 +3,12 @@ import { Link } from "react-router-dom";
 import { api, type DashboardOut } from "@/lib/api";
 import { ErrorBanner, PageHeader, StatCard, StateBadge } from "./components";
 import { useLiveData } from "@/lib/live";
+import { useMe } from "@/lib/capabilities";
 
 export default function Dashboard() {
+  // Same capability the nav uses. A rep has no view_approvals, so this button
+  // led them to a screen the API refuses.
+  const { can } = useMe("internal");
   // Live: approvals land, deals stall and invoices are paid while this screen
   // is open. A fetch on mount alone leaves the landing page quietly stale.
   const { data, error, initialLoading, lastUpdated } = useLiveData<DashboardOut>(
@@ -42,12 +46,14 @@ export default function Dashboard() {
             >
               <span>+</span> New Quotation
             </Link>
-            <Link
-              to="/approvals"
-              className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-2xs transition-colors"
-            >
-              View Approvals
-            </Link>
+            {can("view_approvals") && (
+              <Link
+                to="/approvals"
+                className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-1.5 text-xs font-semibold shadow-2xs transition-colors"
+              >
+                View Approvals
+              </Link>
+            )}
           </div>
         }
       />

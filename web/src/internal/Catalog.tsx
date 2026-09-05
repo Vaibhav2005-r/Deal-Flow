@@ -11,7 +11,7 @@ import {
   PageHeader,
   Pagination,
   StatCard,
-  money,
+  currency,
 } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
@@ -202,7 +202,7 @@ export default function Catalog() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">List Price ($)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">List Price (₹)</label>
               <input
                 type="number"
                 step="0.01"
@@ -290,7 +290,7 @@ export default function Catalog() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
-                      ${money(p.list_price)}
+                      {currency(p.list_price)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -330,7 +330,7 @@ export default function Catalog() {
                 {selected.sku} — {selected.name}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Category: {selected.category} · Standard List: ${money(selected.list_price)}
+                Category: {selected.category} · Standard List: {currency(selected.list_price)}
               </p>
             </div>
             <button
@@ -361,7 +361,7 @@ export default function Catalog() {
                       <td className="py-2 px-3 font-semibold text-slate-800">{pl.name}</td>
                       <td className="py-2 px-3 text-slate-600 uppercase font-mono">{pl.currency}</td>
                       <td className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums">
-                        ${money(pl.price)}
+                        {currency(pl.price)}
                       </td>
                     </tr>
                   ))}

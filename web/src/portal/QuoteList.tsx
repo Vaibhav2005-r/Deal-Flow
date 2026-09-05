@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PortalQuoteSummary } from "@/lib/api";
+import { currency } from "@/lib/money";
 
 export default function QuoteList() {
   const [quotes, setQuotes] = useState<PortalQuoteSummary[]>([]);
@@ -35,10 +36,8 @@ export default function QuoteList() {
     loadQuotes();
   }, [page, pageSize]);
 
-  function formatCurrency(val: string | number) {
-    const n = Number(val);
-    return isNaN(n) ? String(val) : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }
+  const formatCurrency = (val: string | number) =>
+    isNaN(Number(val)) ? String(val) : currency(val);
 
   function renderStateBadge(state: string) {
     if (state === "SENT") {

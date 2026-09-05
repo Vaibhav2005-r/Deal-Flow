@@ -303,21 +303,9 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
               </button>
             </motion.div>
 
-            {/* Quick Demo Customer Selector (Visible on Sign In tab) */}
-            {activeTab === "signin" && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                className="mb-4"
-              >
-                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Quick Demo Customer Preset
-                </label>
-                
-              </motion.div>
-            )}
+            {/* The demo-credential preset that used to sit here is gone (see the
+                note at the top of this file).  It left an empty labelled box
+                behind, which read as a control that had failed to load. */}
 
             {/* Error Message with Shake Animation */}
             <AnimatePresence>

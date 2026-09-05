@@ -9,7 +9,7 @@ import {
   type DealHealthAssessment,
   type RevenueTrend,
 } from "@/lib/api";
-import { money, StateBadge } from "./components";
+import { currency, StateBadge } from "./components";
 import { useLiveData } from "@/lib/live";
 
 interface PeriodData {
@@ -114,7 +114,7 @@ export default function FinanceHome() {
     if (val >= 100000) {
       return `₹${(val / 100000).toFixed(1)}L`;
     }
-    return `₹${val.toLocaleString()}`;
+    return currency(val);
   };
 
   const container = {
@@ -401,8 +401,12 @@ export default function FinanceHome() {
               ) : (
                 approvals.slice(0, 3).map((q) => {
                   const netTotal = Number(q.totals?.net_total ?? 0);
-                  const discountPct = q.lines?.[0]?.discount_pct ?? "15";
-                  const marginPct = q.lines?.[0]?.margin_pct ?? "21";
+                  // No invented fallbacks.  These three read "15%", "21%" and
+                  // "8.4L" when the API returned nothing, so a quote with no
+                  // figures yet displayed someone else's plausible-looking
+                  // numbers as its own.  Absent stays visibly absent.
+                  const discountPct = q.lines?.[0]?.discount_pct ?? null;
+                  const marginPct = q.lines?.[0]?.margin_pct ?? null;
                   return (
                     <div
                       key={q.id}
@@ -416,9 +420,9 @@ export default function FinanceHome() {
                           <StateBadge state={q.state} />
                         </div>
                         <div className="flex items-center gap-4 mt-1.5 text-[11px] text-slate-500">
-                          <span>Deal Value: <strong className="text-slate-800">{netTotal > 0 ? money(netTotal) : "₹8.4L"}</strong></span>
-                          <span>Discount: <strong className="text-amber-600">{discountPct}%</strong></span>
-                          <span>Margin: <strong className="text-emerald-600">{marginPct}%</strong></span>
+                          <span>Deal Value: <strong className="text-slate-800">{netTotal > 0 ? currency(netTotal) : "—"}</strong></span>
+                          <span>Discount: <strong className="text-amber-600">{discountPct === null ? "—" : `${discountPct}%`}</strong></span>
+                          <span>Margin: <strong className="text-emerald-600">{marginPct === null ? "—" : `${marginPct}%`}</strong></span>
                         </div>
                       </div>
                       <button
@@ -532,9 +536,9 @@ export default function FinanceHome() {
                         <td className="px-3.5 py-2.5 font-bold text-slate-900">{inv.reference}</td>
                         <td className="px-3.5 py-2.5 text-slate-700 truncate max-w-[140px]">{inv.customer_name}</td>
                         <td className="px-3.5 py-2.5 text-right font-semibold text-slate-800">
-                          ${money(inv.total)}
+                          {currency(inv.total)}
                         </td>
-                        <td className="px-3.5 py-2.5 text-slate-500">{inv.issued_at?.slice(0, 10) ?? "12 Sep"}</td>
+                        <td className="px-3.5 py-2.5 text-slate-500">{inv.issued_at?.slice(0, 10) ?? "—"}</td>
                         <td className="px-3.5 py-2.5">
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
