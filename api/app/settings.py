@@ -20,7 +20,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    database_url: str = _DEFAULT_DB
+    #: Non-secret default matching docker-compose. A real credential belongs in
+    #: api/.env (already gitignored) or the environment, never in this file --
+    #: both repositories are public, so anything defaulted here is published.
+    database_url: str = "mysql+pymysql://dealflow:dealflow@localhost:3306/dealflow"
     api_title: str = "DealFlow360"
     api_version: str = "0.1.0"
 

@@ -273,18 +273,20 @@ Compose file and Dockerfile are written but have not been executed. Everything t
 would host is verified: the API serves the whole flow under `uvicorn`, and the web
 client was driven against it in a browser.
 
-**Tests run on SQLite; production is PostgreSQL.** Column types are dialect-portable
-(`BIGSERIAL`/`JSONB` on Postgres, `INTEGER`/`JSON` on SQLite), and nothing under test is
-dialect-specific — but the Postgres-only surface (the append-only `decision_log`
-trigger, `JSONB` operators) has no test running against Postgres.
+**Tests run on SQLite; production is MySQL 8.4.** Column types are dialect-portable, so
+nothing under test is dialect-specific — but the server-only surface has no test running
+against a real server. The `decision_log` append-only triggers are the clearest case:
+the migration installs genuinely different DDL for MySQL and PostgreSQL and nothing at
+all for SQLite, so the suite asserts the right statements are *selected* per dialect
+without ever executing them against a server.
 
 **Currency is presentational.** Amounts render with `en-IN` grouping; the price-list
 table carries a currency column and the seeded USD list applies a flat multiplier, but
 there is no FX rate anywhere — a USD price is a number a human typed, not a conversion.
 
-**The `decision_log` append-only trigger is PostgreSQL-only.** The migration installs
-`BEFORE UPDATE`/`BEFORE DELETE` triggers that raise; on SQLite the statement is skipped,
-so the test suite exercises the append-only *convention* but not its enforcement.
+**Secrets belong in `api/.env`, never in `settings.py`.** Both repositories are public,
+so anything defaulted in source is published the moment it is pushed — and deleting it
+later does not un-publish it. `api/.env.example` is the template; `.env` is gitignored.
 
 **Deleting a product is not offered.** Products are referenced by historical quote
 lines, so a delete would either orphan an audit trail or cascade into one. Archiving is

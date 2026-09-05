@@ -22,3 +22,6 @@ pgsql/
 pgsql.zip
 pg.log
 *.db
+
+# the template is safe to commit; real .env files are not
+!.env.example
