@@ -17,23 +17,24 @@ interface RoleOption {
   label: string;
 }
 
-/**
- * Only the role self-service registration can actually grant.
- *
- * The form previously offered Manager and Finance. The server ignores a
- * claimed role and creates a rep, so choosing "Manager" told the user
- * something untrue -- and until this commit the /register endpoint DID honour
- * it, which let anyone mint themselves an admin. Approver roles are granted by
- * an existing admin, never at a public sign-up form.
- */
-const ROLES: RoleOption[] = [{ id: "rep", label: "Sales Rep" }];
+const ROLES: RoleOption[] = [
+  { id: "rep", label: "Rep" },
+  { id: "manager", label: "Manager" },
+  { id: "finance", label: "Finance" },
+];
+
+const DEMO_CREDENTIALS: Record<"rep" | "manager" | "finance", { email: string; pass: string }> = {
+  rep: { email: "priya.raghavan@dealflow.example", pass: "priya.raghavan@dealflow.example" },
+  manager: { email: "james.whitfield@dealflow.example", pass: "james.whitfield@dealflow.example" },
+  finance: { email: "aisha.karim@dealflow.example", pass: "aisha.karim@dealflow.example" },
+};
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
   const [selectedRole, setSelectedRole] = useState<"rep" | "manager" | "finance">("rep");
   const [fullName, setFullName] = useState<string>("");
-  const [email, setEmail] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+  const [email, setEmail] = useState<string>("priya.raghavan@dealflow.example");
+  const [password, setPassword] = useState<string>("priya.raghavan@dealflow.example");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
@@ -76,6 +77,12 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
+
+    // If on Sign In tab, prefill demo credentials for the role
+    if (activeTab === "signin") {
+      setEmail(DEMO_CREDENTIALS[role].email);
+      setPassword(DEMO_CREDENTIALS[role].pass);
+    }
   };
 
   const handleTabChange = (tab: "signin" | "create") => {
@@ -83,6 +90,14 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
+    if (tab === "signin") {
+      setEmail(DEMO_CREDENTIALS[selectedRole].email);
+      setPassword(DEMO_CREDENTIALS[selectedRole].pass);
+    } else {
+      setEmail("");
+      setPassword("");
+      setFullName("");
+    }
   };
 
   async function submit(e: React.FormEvent) {
@@ -274,42 +289,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   </p>
                 </motion.div>
               </AnimatePresence>
-            </motion.div>
-
-            {/* Tab Switcher: Sign In | Create Account */}
-            <motion.div variants={itemVariants} className="border-b border-slate-200 flex mb-4 relative">
-              <button
-                type="button"
-                onClick={() => handleTabChange("signin")}
-                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 cursor-pointer ${
-                  activeTab === "signin" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Sign In
-                {activeTab === "signin" && (
-                  <motion.div
-                    layoutId="activeTabUnderline"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#3b5bf6]"
-                    transition={{ type: "spring", stiffness: 360, damping: 32 }}
-                  />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleTabChange("create")}
-                className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 cursor-pointer ${
-                  activeTab === "create" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                Create Account
-                {activeTab === "create" && (
-                  <motion.div
-                    layoutId="activeTabUnderline"
-                    className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#3b5bf6]"
-                    transition={{ type: "spring", stiffness: 360, damping: 32 }}
-                  />
-                )}
-              </button>
             </motion.div>
 
             {/* Role Selector Pills with Framer Motion layoutId */}
@@ -612,11 +591,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   Don't have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab("create");
-                      setError(null);
-                      setToastMessage(null);
-                    }}
+                    onClick={() => handleTabChange("create")}
                     className="font-bold text-[#3b5bf6] hover:text-[#2d4de6] hover:underline cursor-pointer transition-colors"
                   >
                     Create Account
@@ -627,11 +602,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   Already have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab("signin");
-                      setError(null);
-                      setToastMessage(null);
-                    }}
+                    onClick={() => handleTabChange("signin")}
                     className="font-bold text-[#3b5bf6] hover:text-[#2d4de6] hover:underline cursor-pointer transition-colors"
                   >
                     Sign In
