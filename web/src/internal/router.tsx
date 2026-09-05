@@ -111,7 +111,13 @@ export default function InternalRouter() {
           </div>
 
           {/* Center Navigation for Desktop */}
-          <nav className="hidden md:flex items-center justify-center gap-1 sm:gap-1.5 flex-1 max-w-4xl mx-auto overflow-x-auto no-scrollbar py-1">
+          {/* justify-START, not justify-center. A centred flex row that
+              overflows spills equally in BOTH directions, and the left spill
+              cannot be reached -- overflow-x-auto has no negative scroll. At
+              1280px that put "Home" at x=-59, off-screen and unclickable.
+              Dropping flex-1 lets the nav shrink to its content, so mx-auto
+              still centres it whenever it fits, which is the common case. */}
+          <nav className="hidden md:flex items-center justify-start gap-1 sm:gap-1.5 max-w-4xl mx-auto overflow-x-auto no-scrollbar py-1">
             {/* 1. Home (FinanceHome for Finance, Dashboard for Rep/Manager) */}
             <NavLink to="/" end className={tab}>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -328,12 +328,16 @@ export function StatCard({
 
 export function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
+  const message =
+    error === "500" || error.includes("Internal Server Error")
+      ? "Cannot connect to DealFlow backend service (port 8000). Please ensure the FastAPI server is running."
+      : error;
   return (
     <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium rounded-lg p-3 flex items-start gap-2 shadow-2xs mb-4">
       <svg className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
-      <span>{error}</span>
+      <span>{message}</span>
     </div>
   );
 }
