@@ -71,6 +71,20 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
+
+    // If on Sign In tab and field is either empty or had a previous demo email, fill with demo account
+    if (activeTab === "signin") {
+      if (role === "finance") {
+        setEmail("aisha.karim@dealflow.example");
+        setPassword("aisha.karim@dealflow.example");
+      } else if (role === "manager") {
+        setEmail("james.whitfield@dealflow.example");
+        setPassword("james.whitfield@dealflow.example");
+      } else if (role === "rep") {
+        setEmail("priya.raghavan@dealflow.example");
+        setPassword("priya.raghavan@dealflow.example");
+      }
+    }
   };
 
   const handleTabChange = (tab: "signin" | "create") => {
@@ -78,6 +92,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
+    if (tab === "create") {
+      setEmail("");
+      setPassword("");
+      setFullName("");
+    }
   };
 
   async function submit(e: React.FormEvent) {
@@ -102,7 +121,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
         // Account created successfully -> Switch to signin tab with clear prompt to sign in
         setActiveTab("signin");
-        setPassword("");
         setSuccessMessage("Account created successfully! Please sign in with your password to continue.");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create account. Please check your details.");
@@ -122,7 +140,13 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       }>("/api/auth/login", { email: email.trim(), password });
 
       setToken("internal", res.token);
-      localStorage.setItem("df360.internal.user", JSON.stringify(res));
+      localStorage.setItem(
+        "df360.internal.user",
+        JSON.stringify({
+          ...res,
+          role: res.role || selectedRole,
+        })
+      );
       onLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid credentials. Please check your email and password.");

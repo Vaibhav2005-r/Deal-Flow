@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { clearToken, hasScope } from "@/lib/auth";
+import { clearToken, getCurrentUser, getInternalRole, hasScope, isFinanceUser } from "@/lib/auth";
 import Approvals from "./Approvals";
 import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
@@ -21,15 +21,6 @@ import Reports from "./Reports";
 
 import { DealFlowLogo } from "@/components/Logo";
 
-function currentUser(): { full_name: string; role: string } | null {
-  try {
-    const raw = localStorage.getItem("df360.internal.user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 // Enterprise tab styling with icon and typography
 const tab = ({ isActive }: { isActive: boolean }) =>
   `px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
@@ -44,9 +35,9 @@ export default function InternalRouter() {
 
   if (!authed) return <Login onLogin={() => setAuthed(true)} />;
 
-  const user = currentUser();
-  const roleName = (user?.role ?? "internal").toLowerCase();
-  const isFinance = roleName === "finance";
+  const user = getCurrentUser();
+  const roleName = getInternalRole();
+  const isFinance = isFinanceUser();
 
   const getRoleBadgeStyle = (r: string) => {
     switch (r) {
