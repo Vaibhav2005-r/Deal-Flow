@@ -187,6 +187,89 @@ class Proration(BaseModel):
 
 
 # --------------------------------------------------------------------------
+# advisor snapshot  (TIER 1 — proposals only, never state)
+# --------------------------------------------------------------------------
+
+
+class OrderLineSnapshot(_Snap):
+    """A line already on the quote, as the margin maths sees it."""
+
+    product_id: int
+    list_price: Decimal
+    discount_pct: Decimal
+    unit_cost: Decimal
+    qty: int
+
+
+class CandidateSnapshot(_Snap):
+    """One precomputed affinity edge plus the product it points at.
+
+    Affinity is computed by FP-Growth at SEED time (§5.4) and passed in here —
+    the domain never runs a model, and §13 forbids running FP-Growth inside a
+    request handler.
+    """
+
+    product_id: int
+    sku: str
+    name: str
+    category: str
+    list_price: Decimal
+    unit_cost: Decimal
+    is_promoted: bool = False
+    has_stock: bool = True
+    support: Decimal = Decimal(0)
+    confidence: Decimal = Decimal(0)
+    lift: Decimal = Decimal(0)
+    #: which line on the quote suggested it, for explanation
+    antecedent_product_id: int | None = None
+    antecedent_name: str = ""
+
+
+class AdvisorSnapshot(_Snap):
+    quotation_id: int | None = None
+    lines: list[OrderLineSnapshot]
+    candidates: list[CandidateSnapshot]
+    min_suggestion_margin_pct: Decimal = Decimal("15")
+    #: discount assumed for a suggested line when projecting margin
+    assumed_discount_pct: Decimal = Decimal(0)
+    top_n: int = 3
+
+
+# --------------------------------------------------------------------------
+# billing snapshots
+# --------------------------------------------------------------------------
+
+
+class InvoiceLineSnapshot(_Snap):
+    product_id: int
+    description: str
+    qty: int
+    unit_price: Decimal
+    discount_pct: Decimal
+    is_recurring: bool
+
+
+class InvoicePlanSnapshot(_Snap):
+    """Everything needed to partition a confirmed quote into invoices (§5.3)."""
+
+    quotation_id: int | None = None
+    as_of: date                      # injected, never datetime.now() (§3)
+    lines: list[InvoiceLineSnapshot]
+    billing_interval_days: int = 30
+
+
+# --------------------------------------------------------------------------
+# fulfillment
+# --------------------------------------------------------------------------
+
+
+class FulfillmentLineSnapshot(_Snap):
+    sku: str
+    product_id: int
+    qty: int
+
+
+# --------------------------------------------------------------------------
 # sentinel snapshot
 # --------------------------------------------------------------------------
 
