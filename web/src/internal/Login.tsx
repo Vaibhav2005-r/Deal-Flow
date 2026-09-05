@@ -29,7 +29,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [fullName, setFullName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
+  const [confirmPassword, setConfirmPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,19 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setSelectedRole(role);
     setError(null);
     setToastMessage(null);
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+  };
+
+  const handleTabChange = (tab: "signin" | "create") => {
+    setActiveTab(tab);
+    setError(null);
+    setToastMessage(null);
+    setFullName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
   };
 
   async function submit(e: React.FormEvent) {
@@ -76,29 +91,75 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setToastMessage(null);
 
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanFullName = fullName.trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     if (activeTab === "create") {
+      if (!cleanFullName || cleanFullName.length < 2) {
+        setError("Please enter your full name (at least 2 characters).");
+        return;
+      }
+      if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        setError("Please enter a valid work email address.");
+        return;
+      }
+      if (!password || password.length < 3) {
+        setError("Password must be at least 3 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Passwords do not match. Please re-enter your password.");
+        return;
+      }
+      if (!agreedToTerms) {
+        setError("Please agree to the Terms & Privacy Policy to proceed.");
+        return;
+      }
+
       setBusy(true);
       try {
-        await api.post<{
+        const res = await api.post<{
           token: string;
+          scope: string;
           role: string;
           full_name: string;
           user_id: number;
         }>("/api/auth/register", {
-          email: email.trim(),
+          email: cleanEmail,
           password,
-          full_name: fullName.trim() || undefined,
+          full_name: cleanFullName,
           role: selectedRole,
         });
 
-        setActiveTab("signin");
-        setPassword("");
-        setToastMessage("Account created successfully! Please sign in with your credentials.");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create account. Please check your details.");
+        // Automatic authentication and redirect to dashboard
+        setToken("internal", res.token);
+        localStorage.setItem("df360.internal.user", JSON.stringify(res));
+        onLogin();
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (
+          msg.toLowerCase().includes("already exists") ||
+          msg.toLowerCase().includes("already registered") ||
+          err?.status === 409
+        ) {
+          setError("An account with this email already exists. Please sign in instead.");
+        } else {
+          setError(msg || "Failed to create account. Please check your details.");
+        }
       } finally {
         setBusy(false);
       }
+      return;
+    }
+
+    // Sign In Flow
+    if (!cleanEmail) {
+      setError("Please enter your work email.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
       return;
     }
 
@@ -106,16 +167,17 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     try {
       const res = await api.post<{
         token: string;
+        scope: string;
         role: string;
         full_name: string;
         user_id: number;
-      }>("/api/auth/login", { email: email.trim(), password });
+      }>("/api/auth/login", { email: cleanEmail, password });
 
       setToken("internal", res.token);
       localStorage.setItem("df360.internal.user", JSON.stringify(res));
       onLogin();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid credentials. Please check your email and password.");
+    } catch (err: any) {
+      setError("Invalid credentials. Please check your email and password.");
     } finally {
       setBusy(false);
     }
@@ -230,11 +292,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             <motion.div variants={itemVariants} className="border-b border-slate-200 flex mb-4 relative">
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("signin");
-                  setError(null);
-                  setToastMessage(null);
-                }}
+                onClick={() => handleTabChange("signin")}
                 className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 ${
                   activeTab === "signin" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
                 }`}
@@ -250,11 +308,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab("create");
-                  setError(null);
-                  setToastMessage(null);
-                }}
+                onClick={() => handleTabChange("create")}
                 className={`w-1/2 pb-2 text-xs font-semibold relative text-center transition-colors duration-200 ${
                   activeTab === "create" ? "text-[#3b5bf6]" : "text-slate-500 hover:text-slate-800"
                 }`}
@@ -347,7 +401,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             {/* Form Container with AnimatePresence for Sign In ↔ Create Account */}
             <AnimatePresence mode="wait" initial={false}>
               <motion.form
-                key={activeTab}
+                key={`${activeTab}-${selectedRole}`}
                 onSubmit={submit}
                 initial={
                   shouldReduceMotion
@@ -385,11 +439,12 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                         type="text"
                         name="dealflow_fullname"
                         id="dealflow_fullname"
+                        required
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Enter your full name"
+                        placeholder="e.g. Alex Morgan"
                         autoComplete="name"
-                        className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
+                        className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
                       />
                     </div>
                   </motion.div>
@@ -413,9 +468,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your work email"
+                      placeholder="e.g. alex.morgan@company.com"
                       autoComplete="off"
-                      className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
+                      className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
                     />
                   </div>
                 </div>
@@ -438,9 +493,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder={activeTab === "create" ? "Create a password" : "Enter your password"}
+                      placeholder={activeTab === "create" ? "e.g. min. 6 characters" : "••••••••"}
                       autoComplete="new-password"
-                      className="w-full pl-9 pr-9 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 font-mono"
+                      className="w-full pl-9 pr-9 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 font-mono"
                     />
                     <button
                       type="button"
@@ -471,6 +526,65 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                     </button>
                   </div>
                 </div>
+
+                {/* Confirm Password (Create Account only) */}
+                {activeTab === "create" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Confirm Password
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 group-focus-within:text-[#3b5bf6] transition-colors">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                      </div>
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        name="dealflow_confirm_password"
+                        id="dealflow_confirm_password"
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="••••••••"
+                        autoComplete="new-password"
+                        className="w-full pl-9 pr-9 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        aria-label="Toggle confirm password visibility"
+                      >
+                        <AnimatePresence mode="wait" initial={false}>
+                          <motion.div
+                            key={showConfirmPassword ? "eye-open" : "eye-closed"}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                            transition={{ duration: 0.15 }}
+                          >
+                            {showConfirmPassword ? (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            )}
+                          </motion.div>
+                        </AnimatePresence>
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Remember Me & Forgot Password (Sign In) or Terms Agreement (Create Account) */}
                 <div className="flex items-center justify-between pt-0.5">
@@ -608,11 +722,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   Don't have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab("create");
-                      setError(null);
-                      setToastMessage(null);
-                    }}
+                    onClick={() => handleTabChange("create")}
                     className="font-bold text-[#3b5bf6] hover:text-[#2d4de6] hover:underline cursor-pointer transition-colors"
                   >
                     Create Account
@@ -623,11 +733,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   Already have an account?{" "}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab("signin");
-                      setError(null);
-                      setToastMessage(null);
-                    }}
+                    onClick={() => handleTabChange("signin")}
                     className="font-bold text-[#3b5bf6] hover:text-[#2d4de6] hover:underline cursor-pointer transition-colors"
                   >
                     Sign In

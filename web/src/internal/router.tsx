@@ -6,6 +6,7 @@ import { clearToken, hasScope } from "@/lib/auth";
 import Approvals from "./Approvals";
 import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
+import FinanceHome from "./FinanceHome";
 import DiscountConfig from "./DiscountConfig";
 import FulfillmentList from "./FulfillmentList";
 import Invoices from "./Invoices";
@@ -30,8 +31,10 @@ function currentUser(): { full_name: string; role: string } | null {
 }
 
 const tab = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-    isActive ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-200"
+  `px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap flex items-center justify-center ${
+    isActive
+      ? "bg-slate-900 text-white shadow-xs font-semibold"
+      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium"
   }`;
 
 export default function InternalRouter() {
@@ -39,40 +42,56 @@ export default function InternalRouter() {
   if (!authed) return <Login onLogin={() => setAuthed(true)} />;
 
   const user = currentUser();
+  const isFinance = user?.role?.toLowerCase() === "finance";
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
-        <div className="max-w-7xl mx-auto px-6 py-2 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-5">
-            <DealFlowLogo size={24} />
-            <nav className="flex gap-1 overflow-x-auto py-0.5">
-              {/* Order mirrors the product flow: home, sell, approve, fulfil,
-                  bill, then the analysis and admin surfaces. */}
-              <NavLink to="/" end className={tab}>Home</NavLink>
-              <NavLink to="/build" className={tab}>Build</NavLink>
-              <NavLink to="/quotes" className={tab}>Quotations</NavLink>
-              <NavLink to="/approvals" className={tab}>Approvals</NavLink>
-              <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>
-              <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>
-              <NavLink to="/invoices" className={tab}>Invoices</NavLink>
-              <NavLink to="/health" className={tab}>Deal Health</NavLink>
-              <NavLink to="/reports" className={tab}>Reports</NavLink>
-              <NavLink to="/catalog" className={tab}>Products</NavLink>
-              <span className="w-px h-5 bg-slate-200 mx-1 self-center" />
-              <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>
-              <NavLink to="/discount-config" className={tab}>Config</NavLink>
-              <NavLink to="/reliability" className={tab}>Audit</NavLink>
-            </nav>
+    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+          {/* Left: Branding */}
+          <div className="flex items-center gap-3 shrink-0">
+            <DealFlowLogo size={28} />
           </div>
 
+          {/* Center: Navigation Items */}
+          <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
+            <NavLink to="/" end className={tab}>Home</NavLink>
+            
+            {!isFinance && <NavLink to="/build" className={tab}>Build</NavLink>}
+            
+            <NavLink to="/quotes" className={tab}>Quotations</NavLink>
+            <NavLink to="/approvals" className={tab}>Approvals</NavLink>
+            
+            {!isFinance && <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>}
+            
+            <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>
+            <NavLink to="/invoices" className={tab}>Invoices</NavLink>
+            <NavLink to="/health" className={tab}>Deal Health</NavLink>
+            <NavLink to="/reports" className={tab}>Reports</NavLink>
+            <NavLink to="/catalog" className={tab}>Products</NavLink>
+            
+            <span className="w-px h-4 bg-slate-200 mx-1 self-center shrink-0" />
+            
+            {!isFinance && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
+            {!isFinance && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
+            
+            <NavLink to="/reliability" className={tab}>Audit</NavLink>
+          </nav>
+
+          {/* Right: User Profile & Sign Out */}
           <div className="flex items-center gap-3 shrink-0">
-            <span className="text-xs text-slate-600 font-medium" data-testid="whoami">
-              {user?.full_name} · <span className="uppercase text-[10px] font-bold text-slate-500">{user?.role}</span>
-            </span>
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-[#3b5bf6]" />
+              <span className="text-xs font-semibold text-slate-800" data-testid="whoami">
+                {user?.full_name ?? "User"}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                · {user?.role ?? "Internal"}
+              </span>
+            </div>
             <button
               onClick={() => { clearToken("internal"); setAuthed(false); }}
-              className="text-xs text-slate-500 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1 rounded-md transition-colors"
+              className="text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg transition-colors font-medium shadow-2xs cursor-pointer"
             >
               Sign out
             </button>
@@ -82,7 +101,7 @@ export default function InternalRouter() {
 
       <main className="max-w-7xl mx-auto px-6 py-6">
         <Routes>
-          <Route index element={<Dashboard />} />
+          <Route index element={isFinance ? <FinanceHome /> : <Dashboard />} />
           <Route path="build" element={<QuoteBuilder />} />
           <Route path="quotes" element={<QuoteList />} />
           <Route path="quotes/:id" element={<QuoteBuilder />} />
