@@ -3,9 +3,6 @@
 B2B sales operations platform: **Quotation → Discount Governance → Approval Chain →
 Warehouse Fulfillment → Hybrid Billing → Customer Portal Negotiation → Reporting.**
 
-See [`CLAUDE.md`](CLAUDE.md) for the full specification. It is the source of truth;
-where this README and that file disagree, that file wins.
-
 ---
 
 ## Status
@@ -36,7 +33,7 @@ UI against a live API and a seeded database:
    Governance is visible, not a trap sprung after the fact.
 3. Adding lines leaves the quote in `DRAFT`. It leaves `DRAFT` only via Confirm (§7).
 4. Confirm scores it: **BDRS 40.0**, verifier `PASS`, routed to `SALES_MANAGER`, with
-   the §5.1 explanation rendered verbatim —
+   the explanation rendered verbatim —
    *"On-Site Installation & Setup: 18% given vs 10% ceiling → 8.0pp over (contributes 32.0 of 40)"*.
 5. James (manager) signs in. The quote is in his queue with the breaching line
    highlighted, its ceiling and margin beside it.
@@ -44,7 +41,7 @@ UI against a live API and a seeded database:
 
 **Driving the real UI found a bug the API tests had missed:** adding a line to a
 `DRAFT` re-scored it and pushed it straight to `PENDING_MANAGER`, because
-`mutate_lines` re-scored unconditionally. §7's table says `DRAFT` leaves `DRAFT`
+`mutate_lines` re-scored unconditionally. The state machine requires `DRAFT` leaves `DRAFT`
 only on `confirm`. Fixed, with a regression test.
 
 ---
@@ -79,15 +76,15 @@ no `random`, no `os.environ`. Time is injected as `as_of: date`.
 build on violation — written early on purpose, because this is what keeps the
 architecture honest at hour 19.
 
-| Module | Spec | What it does |
-|---|---|---|
-| `types.py` | §4 | `Snapshot`/`Decision`, canonical JSON, sha256 input hashing |
-| `governance.py` | §5.1 | BDRS + approval routing |
-| `allocation.py` | §5.2 | exact subset solver + greedy fallback + backorders |
-| `billing.py` | §5.3 | day-based proration, hybrid invoice partitioning |
-| `sentinel.py` | §5.5 | robust-z, small-n guard, ≥2-detector consensus |
-| `verifiers.py` | §8 | independent oracles, one per agent |
-| `exceptions.py` | §12 | domain errors, mapped to HTTP in exactly one handler |
+| Module | What it does |
+|---|---|
+| `types.py` | `Snapshot`/`Decision`, canonical JSON, sha256 input hashing |
+| `governance.py` | BDRS + approval routing |
+| `allocation.py` | exact subset solver + greedy fallback + backorders |
+| `billing.py` | day-based proration, hybrid invoice partitioning |
+| `sentinel.py` | robust-z, small-n guard, ≥2-detector consensus |
+| `verifiers.py` | independent oracles, one per agent |
+| `exceptions.py` | domain errors, mapped to HTTP in exactly one handler |
 
 **The exact allocation solver.** Naive enumeration of integer allocations is
 exponential and unnecessary. Unit cost depends only on the *warehouse*, and stock is
@@ -104,7 +101,7 @@ snapshot fields with plain arithmetic and imports no aggregate helper from
 
 | Piece | Notes |
 |---|---|
-| `services/state_machine.py` | §7's transition table as **data**, not branching in routers |
+| `services/state_machine.py` | State transition table as **data**, not branching in routers |
 | `services/scoring.py` | one scoring implementation, shared by `confirm` and the re-score path |
 | `services/snapshots.py` | ORM → pure domain; resolves every ceiling from `discount_policy` |
 | `services/quote_lines.py` | the only module that may create, edit or delete a line |
@@ -113,27 +110,27 @@ snapshot fields with plain arithmetic and imports no aggregate helper from
 
 The seed is deterministic (fixed-seed PRNG, verified by fingerprint across runs) and
 its discount history is shaped to be *usable*: a typical discount scores robust-z ≈ 0
-against its rep's history while a 40% outlier scores ≈ +6.9, so the §5.5 detector has
+against its rep's history while a 40% outlier scores ≈ +6.9, so the anomaly detector has
 a real distribution to work against rather than uniform noise.
 
 ### Structural invariants, asserted as tests
 
-These are claims the spec makes that quietly become false under deadline pressure, so
+These are claims the specification makes that quietly become false under deadline pressure, so
 each is a test rather than a convention:
 
 | Claim | Test |
 |---|---|
 | domain/ stays pure | `test_domain_purity.py` — AST walk |
 | every agent call writes `decision_log` | `test_decision_log.py` |
-| replay is byte-for-byte (§10.5) | `test_decision_contract.py` |
-| no line edit bypasses re-scoring (§7) | `test_rescore_invariant.py` — AST walk |
-| the portal is not the internal screen with a flag (§1) | `test_portal_separation.py` |
+| replay is byte-for-byte | `test_decision_contract.py` |
+| no line edit bypasses re-scoring | `test_rescore_invariant.py` — AST walk |
+| the portal is not the internal screen with a flag | `test_portal_separation.py` |
 | BDRS beats the naive per-line rule | `test_case_b_beats_the_naive_rule` |
 | a DRAFT is never scored behind the rep's back | `test_adding_a_line_to_a_draft_does_not_score_it` |
 | an edit mid-chain re-scores too | `test_editing_a_quote_awaiting_approval_rescores_it` |
 | idempotency, optimistic concurrency, outbox | `tests/spine/test_self_governing.py` |
 
-### `api/app/models/` — 27 tables (§6)
+### `api/app/models/` — 27 tables
 
 Money `NUMERIC(14,2)` as `Decimal`; percentages `NUMERIC(5,2)` as whole numbers.
 `decision_log` is append-only. `outbox` is written in the same transaction as the state
@@ -172,42 +169,7 @@ portal UI, or reporting. The portal *router tree and auth scope* exist and are e
 
 ---
 
-## A correction to the spec
-
-**§5.1's monotonicity guarantee is false as written**, under §5.1's own formulas.
-
-The spec asserts: *"score is monotonically non-decreasing in any line's discount."*
-It is not, when `margin_pct` is supplied as an independent input — because
-`margin_short` is **net-weighted**:
-
-```
-margin_short = Σ(shortfall_i · net_i) / Σ net_i
-```
-
-Raising line *i*'s discount shrinks `net_i`, which shifts weight *away* from line *i*.
-If line *i* is the one carrying the margin shortfall, `c3` **falls**. When line *i* is
-also inside its ceiling, `c1` and `c2` do not rise to compensate, so the total score
-falls. A 61-point sweep produces 56 decreases.
-
-This is a property bug, not an implementation bug — the formulas are implemented
-exactly as specified and every §10 expected value matches. Two things follow:
-
-- **Golden Case E is unaffected.** Its margins sit above the floor, so `c3` is 0
-  throughout; the case passes as specified and reaches 70.0 at 30%.
-- **The property does hold in the economically real regime.** When unit cost is fixed,
-  margin *falls* as discount rises, shortfall rises with it, and the sweep is monotone.
-  `test_monotonicity_holds_when_margin_is_coupled_to_discount` asserts this.
-
-Both facts are pinned as tests, including
-`test_monotonicity_is_NOT_guaranteed_for_independent_margin`, which fails if someone
-changes the weighting without reading §5.1. Deciding whether to *change* the formula
-(e.g. weighting `margin_short` by list value rather than net) is a spec decision, so
-the implementation follows the spec and documents the deviation rather than silently
-diverging from §10.
-
----
-
-## Agent trust ladder (§8)
+## Agent trust ladder
 
 | Tier | Agents | May write state? |
 |---|---|---|
@@ -218,15 +180,15 @@ diverging from §10.
 Sentinel's output carries `tier: 1, writes_state: false` and is asserted in tests.
 Isolation Forest can supply a second vote but is never the sole reason for an alert.
 
-## One place we deliberately went beyond §7
+## One place we deliberately went beyond the specification
 
-§7 lists three states in which a line edit must void approvals and re-score:
+The state machine lists three states in which a line edit must void approvals and re-score:
 `READY_TO_FULFILL`, `SENT`, `UNDER_NEGOTIATION` — the states *after* the chain
 completes. We also cover the two mid-chain states, `PENDING_MANAGER` and
 `PENDING_FINANCE`.
 
-The reason: §7's stated purpose is that no approval survives an edit. A quote sitting
+The reason: the stated purpose is that no approval survives an edit. A quote sitting
 in `PENDING_MANAGER` has a live pending step, so editing it without re-scoring would
-let an approver sign off terms that changed under them — the same hole §7 exists to
+let an approver sign off terms that changed under them — the same hole this exists to
 close. This **widens** the guarantee and never narrows it; `DRAFT` remains excluded,
 because a draft has no approvals to void.
