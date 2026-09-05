@@ -8,5 +8,11 @@ export default defineConfig({
     // must mirror the "paths" entry in tsconfig.json
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
-  server: { port: 5173, host: true },
+  server: {
+    port: 5173,
+    host: true,
+    watch: {
+      usePolling: true,
+    },
+  },
 });

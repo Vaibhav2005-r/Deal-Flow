@@ -67,6 +67,7 @@ export default function InternalRouter() {
         <Routes>
           <Route index element={<QuoteBuilder />} />
           <Route path="quotes" element={<QuoteList />} />
+          <Route path="quotes/:id" element={<QuoteBuilder />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="pipeline" element={<Pipeline />} />
           <Route path="health" element={<HealthDashboard />} />
