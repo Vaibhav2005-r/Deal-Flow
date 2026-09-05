@@ -176,8 +176,17 @@ def _close_open_steps(
     reason: str | None,
 ) -> None:
     now = datetime.now(timezone.utc)
-    for step in pending_steps(session, quotation.id):
-        step.decision = decision
-        step.decided_by = actor_id
-        step.decided_at = now
-        step.reason = reason
+    steps = pending_steps(session, quotation.id)
+    if not steps:
+        return
+    active = steps[0]
+    active.decision = decision
+    active.decided_by = actor_id
+    active.decided_at = now
+    active.reason = reason
+
+    for downstream in steps[1:]:
+        downstream.decision = ApprovalDecision.VOIDED_BY_EDIT
+        downstream.decided_by = actor_id
+        downstream.decided_at = now
+        downstream.reason = "Voided due to upstream rejection/return"

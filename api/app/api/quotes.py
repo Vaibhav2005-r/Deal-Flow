@@ -209,3 +209,36 @@ def confirm(
     record_idempotent(session, key, endpoint, result.model_dump(mode="json"))
     session.flush()
     return result
+
+
+@router.get("/{quote_id}/messages")
+def get_quote_messages(
+    quote_id: int,
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> list[dict]:
+    """Retrieve portal negotiation thread messages for internal reps."""
+    quote = _load(session, quote_id)
+    from app.models.tables import PortalMessage
+    messages = session.scalars(
+        select(PortalMessage)
+        .where(PortalMessage.quotation_id == quote.id)
+        .order_by(PortalMessage.id)
+    ).all()
+    return [
+        {
+            "id": m.id,
+            "author_name": (
+                session.get(User, m.author_id).full_name
+                if session.get(User, m.author_id) else "unknown"
+            ),
+            "body": m.body,
+            "quote_line_id": m.quote_line_id,
+            "counter_discount_pct": (
+                str(m.counter_discount_pct) if m.counter_discount_pct is not None else None
+            ),
+            "created_at": str(m.created_at),
+        }
+        for m in messages
+    ]
+
