@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type DealHealthAssessment } from "@/lib/api";
-import { StateBadge } from "./components";
+import { Pagination, StateBadge } from "./components";
 
 export default function HealthDashboard() {
   const [deals, setDeals] = useState<DealHealthAssessment[]>([]);
@@ -9,13 +9,24 @@ export default function HealthDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [filterAlertsOnly, setFilterAlertsOnly] = useState(false);
   const [selectedDeal, setSelectedDeal] = useState<DealHealthAssessment | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   async function loadHealth() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get<DealHealthAssessment[]>("/api/deal-health");
-      setDeals(data);
+      const q = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+        ...(filterAlertsOnly ? { alerts_only: "true" } : {}),
+      });
+      const res = await api.getPaginated<DealHealthAssessment[]>(`/api/deal-health?${q.toString()}`);
+      setDeals(res.data);
+      setTotalCount(res.totalCount);
+      setTotalPages(res.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load deal health");
     } finally {
@@ -25,15 +36,15 @@ export default function HealthDashboard() {
 
   useEffect(() => {
     loadHealth();
-  }, []);
+  }, [page, pageSize, filterAlertsOnly]);
 
-  const totalDeals = deals.length;
+  const totalDeals = totalCount || deals.length;
   const alertCount = deals.filter((d) => d.alert).length;
   const stalledCount = deals.filter((d) => d.stalled).length;
   const anomalyCount = deals.filter((d) => d.discount_anomaly).length;
   const slippageCount = deals.filter((d) => d.delivery_slippage).length;
 
-  const displayedDeals = filterAlertsOnly ? deals.filter((d) => d.alert) : deals;
+  const displayedDeals = deals;
 
   return (
     <div className="space-y-6">
@@ -263,6 +274,21 @@ export default function HealthDashboard() {
             </table>
           </div>
         )}
+
+        <div className="mt-4">
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalCount}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(sz) => {
+              setPageSize(sz);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 15, 25, 50]}
+          />
+        </div>
       </div>
 
       {/* Inspector Modal */}

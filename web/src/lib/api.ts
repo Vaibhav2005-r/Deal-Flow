@@ -37,8 +37,69 @@ async function request<T>(
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+export interface PaginatedResult<T> {
+  data: T;
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+}
+
 export const api = {
   get: <T>(p: string, s: Scope = "internal") => request<T>(p, s),
+  getPaginated: async <T>(p: string, s: Scope = "internal"): Promise<PaginatedResult<T>> => {
+    const token = tokenFor(s);
+    const res = await fetch(`${BASE}${p}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (!res.ok) {
+      let detail = `${res.status}`;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? body.error ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new ApiError(res.status, String(detail));
+    }
+    const raw = await res.json();
+    let data: T;
+    let totalCount = 0;
+    let page = 1;
+    let pageSize = 20;
+    let totalPages = 1;
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw) && "items" in raw && "total" in raw) {
+      data = raw.items as T;
+      totalCount = Number(raw.total ?? 0);
+      page = Number(raw.page ?? 1);
+      pageSize = Number(raw.page_size ?? 20);
+      totalPages = Number(raw.total_pages ?? Math.max(1, Math.ceil(totalCount / (pageSize || 1))));
+    } else {
+      data = raw as T;
+      const hTotal = res.headers.get("X-Total-Count") ?? res.headers.get("x-total-count");
+      totalCount = hTotal !== null && hTotal !== "" && !isNaN(Number(hTotal))
+        ? Number(hTotal)
+        : (Array.isArray(data) ? data.length : 0);
+
+      const hPage = res.headers.get("X-Page") ?? res.headers.get("x-page");
+      page = hPage !== null && hPage !== "" && !isNaN(Number(hPage)) ? Number(hPage) : 1;
+
+      const hPageSize = res.headers.get("X-Page-Size") ?? res.headers.get("x-page-size");
+      pageSize = hPageSize !== null && hPageSize !== "" && !isNaN(Number(hPageSize))
+        ? Number(hPageSize)
+        : (Array.isArray(data) ? (data.length || 20) : 20);
+
+      const hTotalPages = res.headers.get("X-Total-Pages") ?? res.headers.get("x-total-pages");
+      totalPages = hTotalPages !== null && hTotalPages !== "" && !isNaN(Number(hTotalPages))
+        ? Number(hTotalPages)
+        : Math.max(1, Math.ceil(totalCount / (pageSize || 1)));
+    }
+    return { data, page, pageSize, totalCount, totalPages };
+  },
   post: <T>(p: string, body?: unknown, s: Scope = "internal") =>
     request<T>(p, s, { method: "POST", body: JSON.stringify(body ?? {}) }),
   patch: <T>(p: string, body?: unknown, s: Scope = "internal") =>
@@ -111,6 +172,8 @@ export interface Score {
   explanation: string[];
   verifier_verdict: string;
   verifier_reasons: string[];
+  concession?: number;
+  concession_review?: boolean;
 }
 
 export interface Customer {

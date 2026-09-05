@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api, type CatalogProduct, type CatalogSummary, type PriceListRef,
   type ProductDetailOut,
 } from "@/lib/api";
-import { EmptyRow, ErrorBanner, PageHeader, StatCard, money } from "./components";
+import { EmptyRow, ErrorBanner, PageHeader, Pagination, StatCard, money } from "./components";
 
 /** Screens 16 & 17 — Product catalog, and the detail view a row opens. */
 export default function Catalog() {
@@ -13,6 +13,10 @@ export default function Catalog() {
   const [category, setCategory] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [draft, setDraft] = useState({
     sku: "", name: "", category: "Hardware", list_price: "", unit_cost: "",
     is_subscription: false, is_promoted: false,
@@ -32,20 +36,34 @@ export default function Catalog() {
     }
   }
 
-  function load() {
-    Promise.all([
-      api.get<CatalogSummary>("/api/catalog/summary"),
-      api.get<CatalogProduct[]>("/api/catalog/products"),
-    ]).then(([s, p]) => { setSummary(s); setProducts(p); })
+  useEffect(() => {
+    api.get<CatalogSummary>("/api/catalog/summary")
+      .then(setSummary)
+      .catch(() => {});
+  }, []);
+
+  const load = useCallback(() => {
+    const q = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      ...(category !== "all" ? { category } : {}),
+    });
+    api.getPaginated<CatalogProduct[]>(`/api/catalog/products?${q.toString()}`)
+      .then((res) => {
+        setProducts(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
       .catch((e) => setError(String(e.message)));
-  }
-  useEffect(load, []);
+  }, [category, page, pageSize]);
+
+  useEffect(load, [load]);
 
   const categories = useMemo(
-    () => Array.from(new Set(products.map((p) => p.category))).sort(),
-    [products],
+    () => ["Hardware", "Software", "Support", "Services"],
+    [],
   );
-  const rows = products.filter((p) => category === "all" || p.category === category);
+  const rows = products;
 
   function open(id: number) {
     setError(null);
@@ -61,8 +79,14 @@ export default function Catalog() {
         subtitle="Every product, variant and price list in one place."
         actions={
           <>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}
-              className="border border-slate-300 rounded px-2 py-1.5 text-sm">
+            <select
+              value={category}
+              onChange={(e) => {
+                setCategory(e.target.value);
+                setPage(1);
+              }}
+              className="border border-slate-300 rounded px-2 py-1.5 text-sm"
+            >
               <option value="all">All categories</option>
               {categories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -174,6 +198,19 @@ export default function Catalog() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+        pageSizeOptions={[10, 20, 50, 100]}
+      />
 
       {selected && (
         <ProductDetail

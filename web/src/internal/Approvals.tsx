@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type Quote } from "@/lib/api";
 import {
-  ApprovalTrail, EmptyRow, FilterTabs, LineTable, PageHeader, RiskBadge,
+  ApprovalTrail, EmptyRow, FilterTabs, LineTable, PageHeader, Pagination, RiskBadge,
   StateBadge, money,
 } from "./components";
 
@@ -23,12 +23,20 @@ export default function Approvals() {
   const [busy, setBusy] = useState<number | null>(null);
   const [filter, setFilter] = useState("pending");
   const [open, setOpen] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const load = useCallback(() => {
-    api.get<Quote[]>("/api/approvals")
-      .then(setQueue)
+    api.getPaginated<Quote[]>(`/api/approvals?page=${page}&page_size=${pageSize}&status=${filter}`)
+      .then((res) => {
+        setQueue(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
       .catch((e) => setError(String(e.message)));
-  }, []);
+  }, [filter, page, pageSize]);
 
   useEffect(load, [load]);
 
@@ -50,23 +58,23 @@ export default function Approvals() {
     }
   }
 
-  /** Pending is the live queue; the other two are history, read off the
-   *  trail rather than a second endpoint. */
-  const rows = queue.filter((q) => {
-    if (filter === "pending") return q.current_stage !== null;
-    const decisions = q.approval_steps.map((s) => s.decision);
-    if (filter === "returned") {
-      return decisions.includes("RETURNED") || decisions.includes("REJECTED");
-    }
-    return decisions.includes("APPROVED");
-  });
+  const rows = queue;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Approvals"
         subtitle="Every quotation that needed, needs, or went through discount approval."
-        actions={<FilterTabs options={FILTERS} value={filter} onChange={setFilter} />}
+        actions={
+          <FilterTabs
+            options={FILTERS}
+            value={filter}
+            onChange={(f) => {
+              setFilter(f);
+              setPage(1);
+            }}
+          />
+        }
       />
 
       {/* The queue is a table first: a manager triages by risk and stage, then
@@ -182,6 +190,18 @@ export default function Approvals() {
           </div>
         </section>
       ))}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }
