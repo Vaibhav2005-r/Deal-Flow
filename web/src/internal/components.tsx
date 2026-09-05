@@ -122,12 +122,13 @@ export function ApprovalTrail({ steps }: { steps: ApprovalStep[] }) {
     VOIDED_BY_EDIT: "text-slate-400 line-through",
     PENDING: "text-slate-900 font-medium",
   };
+  const sorted = [...steps].sort((a, b) => a.id - b.id);
   return (
     <ol className="text-sm space-y-1">
-      {steps.map((s) => (
+      {sorted.map((s) => (
         <li key={s.id} className={tone[s.decision] ?? "text-slate-700"}>
-          {s.step_index + 1}. {s.approver_role.replaceAll("_", " ")} — {s.decision}
-          {s.reason && <span className="text-slate-500"> · {s.reason}</span>}
+          Step {s.step_index + 1} ({s.approver_role.replaceAll("_", " ")}) — {s.decision}
+          {s.reason && <span className="text-slate-500"> · "{s.reason}"</span>}
         </li>
       ))}
     </ol>

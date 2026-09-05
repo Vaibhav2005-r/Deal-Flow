@@ -107,6 +107,11 @@ export default function QuoteBuilder() {
     .reverse()
     .find((s) => s.decision === "RETURNED");
   const isRevisionNeeded = quote?.state === "DRAFT" && !!lastReturnedStep;
+  const isEditable =
+    !quote ||
+    quote.state === "DRAFT" ||
+    quote.state === "PENDING_MANAGER" ||
+    quote.state === "PENDING_FINANCE";
 
   return (
     <div className="space-y-6">
@@ -206,9 +211,16 @@ export default function QuoteBuilder() {
         </div>
       </section>
 
-      {quote && quote.state === "DRAFT" && (
+      {quote && isEditable && (
         <section className="bg-white border border-slate-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Add a line</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-700">Add a line</h3>
+            {quote.state !== "DRAFT" && (
+              <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                ⚡ Editing lines mid-flight voids pending approval steps and immediately re-scores.
+              </span>
+            )}
+          </div>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Product</span>
@@ -260,15 +272,22 @@ export default function QuoteBuilder() {
         <section className="bg-white border border-slate-200 rounded-lg p-4">
           <LineTable
             lines={quote.lines}
-            onDelete={quote.state === "DRAFT" ? removeLine : undefined}
+            onDelete={isEditable ? removeLine : undefined}
           />
           <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
-            <p className="text-sm text-slate-600">
-              Net total{" "}
-              <span className="font-semibold text-slate-900 tabular-nums">
-                ₹{new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
-              </span>
-            </p>
+            <div>
+              <p className="text-sm text-slate-600">
+                Net total{" "}
+                <span className="font-semibold text-slate-900 tabular-nums">
+                  ₹{new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
+                </span>
+              </p>
+              {quote.state !== "DRAFT" && (
+                <p className="text-xs text-slate-500 mt-1">
+                  💡 Removing an over-ceiling line will re-score the quote instantly. If BDRS drops below 20, it auto-approves!
+                </p>
+              )}
+            </div>
             {quote.state === "DRAFT" && (
               <button
                 onClick={confirm}
