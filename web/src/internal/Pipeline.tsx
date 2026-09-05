@@ -24,6 +24,7 @@ export default function Pipeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
+  const [selectedQuote, setSelectedQuote] = useState<Quote | null>(null);
   const [fulfillment, setFulfillment] = useState<FulfillmentOut | null>(null);
   const [invoices, setInvoices] = useState<InvoicesOut | null>(null);
   const [due, setDue] = useState<AmountDue | null>(null);
@@ -35,7 +36,7 @@ export default function Pipeline() {
   const [note, setNote] = useState<string | null>(null);
 
   const loadQuotes = useCallback(() => {
-    api.get<Quote[]>("/api/quotes").then(setQuotes).catch(() => setQuotes([]));
+    api.get<Quote[]>("/api/quotes?all_quotes=true&page_size=200").then(setQuotes).catch(() => setQuotes([]));
   }, []);
   useEffect(loadQuotes, [loadQuotes]);
 
@@ -46,8 +47,10 @@ export default function Pipeline() {
       api.get<AmountDue>(`/api/quotes/${id}/amount-due`),
       api.get<BillingDetailOut>(`/api/quotes/${id}/billing-detail`),
       api.get<StockRow[]>("/api/fulfillment/stock"),
-    ]).then(([f, i, d, b, st]) => {
+      api.get<Quote>(`/api/quotes/${id}`),
+    ]).then(([f, i, d, b, st, q]) => {
       setFulfillment(f); setInvoices(i); setDue(d); setBilling(b); setStock(st);
+      setSelectedQuote(q);
       setOverriding(false); setSplit({});
     }).catch((e) => setError(String(e.message)));
   }, []);
@@ -85,7 +88,7 @@ export default function Pipeline() {
     }
   }
 
-  const quote = quotes.find((q) => q.id === selected);
+  const quote = quotes.find((q) => q.id === selected) || selectedQuote;
   const warehouses = Array.from(
     new Map(stock.map((s) => [s.warehouse, s])).values(),
   );
@@ -206,6 +209,11 @@ export default function Pipeline() {
                 #{q.id} · {q.customer_name} · {q.state}
               </option>
             ))}
+            {selected && !quotes.some((q) => q.id === selected) && selectedQuote && (
+              <option key={selectedQuote.id} value={selectedQuote.id}>
+                #{selectedQuote.id} · {selectedQuote.customer_name} · {selectedQuote.state}
+              </option>
+            )}
           </select>
         </label>
 

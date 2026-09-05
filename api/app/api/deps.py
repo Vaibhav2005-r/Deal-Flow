@@ -9,23 +9,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.security import AuthError, decode_token
-from app.db import SessionLocal
+from app.db import SessionLocal, get_session
 from app.models.enums import Role
-from app.models.tables import IdempotencyKey, User
+from app.models.tables import IdempotencyKey, Quotation, User
 
 INTERNAL_ROLES = {Role.REP, Role.MANAGER, Role.FINANCE, Role.ADMIN}
-
-
-def get_session() -> Iterator[Session]:
-    session = SessionLocal()
-    try:
-        yield session
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 def _claims(authorization: str | None) -> dict:
@@ -88,7 +76,7 @@ ELEVATED_ROLES = {Role.MANAGER, Role.FINANCE, Role.ADMIN}
 
 
 def check_quote_ownership(
-    user: User, quotation: "Quotation",  # noqa: F821 — avoids circular import
+    user: User, quotation: Quotation,
 ) -> None:
     """Raise 403 if a REP tries to access another REP's quotation.
 

@@ -10,6 +10,8 @@ Exposes:
 
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -43,9 +45,6 @@ def _load_quote(session: Session, quote_id: int) -> Quotation:
 # --------------------------------------------------------------------------
 # Deal Health & Sentinel
 # --------------------------------------------------------------------------
-
-
-import math
 
 
 @router.get("/deal-health")
