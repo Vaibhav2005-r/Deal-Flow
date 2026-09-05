@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from app.models.tables import Stock, TierPolicy
+from app.models.tables import Invoice, Stock, TierPolicy
 from tests.spine.conftest import auth
 
 
@@ -150,6 +150,29 @@ def test_invoice_lines_sum_to_the_invoice_total(client, rep):
 
 def test_unknown_invoice_is_404(client, rep):
     assert client.get("/api/invoices/999999", headers=auth(rep["token"])).status_code == 404
+
+
+def test_invoices_summary_matches_database(client, rep, session):
+    res = client.get("/api/invoices/summary", headers=auth(rep["token"]))
+    assert res.status_code == 200
+    data = res.json()
+    assert "total_invoices" in data
+    assert "total_billed" in data
+    assert "total_paid" in data
+    assert "total_outstanding" in data
+    assert data["total_invoices"] == len(session.scalars(select(Invoice)).all())
+
+
+def test_invoice_search_by_reference_or_customer(client, rep):
+    all_rows = client.get("/api/invoices", headers=auth(rep["token"])).json()
+    assert all_rows
+    target = all_rows[0]
+    # Search by reference
+    by_ref = client.get(f"/api/invoices?search={target['reference']}", headers=auth(rep["token"])).json()
+    assert any(r["id"] == target["id"] for r in by_ref)
+    # Search by customer name
+    by_cust = client.get(f"/api/invoices?search={target['customer_name']}", headers=auth(rep["token"])).json()
+    assert any(r["id"] == target["id"] for r in by_cust)
 
 
 # --------------------------------------------------------------------------

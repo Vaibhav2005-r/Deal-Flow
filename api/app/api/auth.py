@@ -124,3 +124,24 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
         user_id=user.id,
         full_name=user.full_name,
     )
+
+
+@router.get("/profiles")
+def list_profiles(session: Session = Depends(get_session)) -> list[dict]:
+    """Return internal profiles available for the quick login switcher."""
+    users = session.scalars(
+        select(User)
+        .where(User.role != Role.PORTAL)
+        .order_by(User.id)
+    ).all()
+    return [
+        {
+            "id": u.id,
+            "full_name": u.full_name,
+            "email": u.email,
+            "role": str(u.role),
+            "label": f"{u.full_name} · {u.role}",
+            "is_demo": u.email.endswith("@dealflow.example"),
+        }
+        for u in users
+    ]

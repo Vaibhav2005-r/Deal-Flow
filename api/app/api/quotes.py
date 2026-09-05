@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
+    check_quote_ownership,
     current_internal_user,
     endpoint_name,
     get_session,
@@ -145,8 +146,8 @@ def add_line(
     user: User = Depends(current_internal_user),
 ) -> QuoteOut:
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     version = _check_version(quote, expected_version)
-
     mutate_lines(
         session,
         quote,
@@ -172,6 +173,7 @@ def update_line(
     user: User = Depends(current_internal_user),
 ) -> QuoteOut:
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     version = _check_version(quote, expected_version)
 
     line = session.get(QuoteLine, line_id)
@@ -197,6 +199,7 @@ def delete_line(
     user: User = Depends(current_internal_user),
 ) -> QuoteOut:
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     version = _check_version(quote, expected_version)
     line = session.get(QuoteLine, line_id)
     if line is None or line.quotation_id != quote.id:
@@ -229,6 +232,7 @@ def confirm(
         return ScoreOut.model_validate(replayed)
 
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     fire(session, quote, Event.CONFIRM, actor_id=user.id)
     result = score_quotation(session, quote, actor_id=user.id)
 
@@ -284,6 +288,7 @@ def post_quote_message(
 ) -> dict:
     """Internal rep posts a message to the quotation portal negotiation thread."""
     quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
     from app.models.tables import PortalMessage
     msg = PortalMessage(
         quotation_id=quote.id,

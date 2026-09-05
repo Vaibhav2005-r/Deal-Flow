@@ -15,6 +15,7 @@ import base64
 import hashlib
 import hmac
 import json
+import secrets
 
 from app.settings import settings
 
@@ -54,12 +55,12 @@ def decode_token(token: str) -> dict:
 def hash_password(password: str) -> str:
     """Hash a password for storage.
 
-    PBKDF2 with a per-user salt, rather than the seed's demo scheme. Real
+    PBKDF2 with a per-user cryptographically random salt. Real
     accounts created through signup get this; the seeded demo accounts keep
     their fixed scheme so the fixtures stay reproducible. Plaintext is never
     stored or compared.
     """
-    salt = hashlib.sha256(password.encode()).hexdigest()[:16]
+    salt = secrets.token_hex(8)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
     return f"pbkdf2${salt}${digest.hex()}"
 

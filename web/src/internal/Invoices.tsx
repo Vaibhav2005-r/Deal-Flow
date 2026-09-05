@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type InvoiceDetailOut, type InvoiceRow } from "@/lib/api";
+import { api, type InvoiceDetailOut, type InvoiceRow, type InvoiceSummary } from "@/lib/api";
 import {
   EmptyRow, ErrorBanner, FilterTabs, PageHeader, Pagination, StatCard, money,
 } from "./components";
@@ -14,18 +14,34 @@ const FILTERS = [
 export default function Invoices() {
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [summary, setSummary] = useState<InvoiceSummary | null>(null);
   const [selected, setSelected] = useState<InvoiceDetailOut | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
+  // Fetch summary directly from the database matching the active filter and search
   useEffect(() => {
+    const q = new URLSearchParams();
+    if (filter !== "all") q.set("status", filter);
+    if (search.trim()) q.set("search", search.trim());
+    api.get<InvoiceSummary>(`/api/invoices/summary${q.toString() ? `?${q.toString()}` : ""}`)
+      .then(setSummary)
+      .catch(() => {});
+  }, [filter, search]);
+
+  // Fetch paginated invoices list from the database
+  useEffect(() => {
+    setLoading(true);
     const q = new URLSearchParams({
       page: String(page),
       page_size: String(pageSize),
       ...(filter !== "all" ? { status: filter } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
     });
     api.getPaginated<InvoiceRow[]>(`/api/invoices?${q.toString()}`)
       .then((res) => {
@@ -33,8 +49,9 @@ export default function Invoices() {
         setTotalCount(res.totalCount);
         setTotalPages(res.totalPages);
       })
-      .catch((e) => setError(String(e.message)));
-  }, [filter, page, pageSize]);
+      .catch((e) => setError(String(e.message)))
+      .finally(() => setLoading(false));
+  }, [filter, search, page, pageSize]);
 
   function open(id: number) {
     setError(null);
@@ -43,32 +60,59 @@ export default function Invoices() {
       .catch((e) => setError(String(e.message)));
   }
 
-  const billed = rows.reduce((n, r) => n + Number(r.total), 0);
-  const outstanding = rows.reduce((n, r) => n + Number(r.outstanding), 0);
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Invoices"
         subtitle="Every invoice generated from one-time and recurring orders."
         actions={
-          <FilterTabs
-            options={FILTERS}
-            value={filter}
-            onChange={(f) => {
-              setFilter(f);
-              setPage(1);
-            }}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="search"
+              placeholder="Search reference or customer..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              className="border border-slate-200 rounded px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 w-56"
+            />
+            <FilterTabs
+              options={FILTERS}
+              value={filter}
+              onChange={(f) => {
+                setFilter(f);
+                setPage(1);
+              }}
+            />
+          </div>
         }
       />
       <ErrorBanner error={error} />
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Total invoices" value={totalCount || rows.length} />
-        <StatCard label="Total billed (page)" value={money(billed)} />
-        <StatCard label="Outstanding (page)" value={money(outstanding)}
-          tone={outstanding > 0 ? "amber" : "emerald"} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard
+          label="Total invoices"
+          value={summary?.total_invoices ?? totalCount}
+          hint={filter !== "all" ? `${filter} only` : "in database"}
+        />
+        <StatCard
+          label="Total billed"
+          value={money(summary?.total_billed ?? "0")}
+          hint="database total"
+        />
+        <StatCard
+          label="Total paid"
+          value={money(summary?.total_paid ?? "0")}
+          tone="emerald"
+          hint={`${summary?.paid_invoices ?? 0} invoices`}
+        />
+        <StatCard
+          label="Total outstanding"
+          value={money(summary?.total_outstanding ?? "0")}
+          tone={(Number(summary?.total_outstanding ?? 0)) > 0 ? "amber" : "emerald"}
+          hint={`${summary?.unpaid_invoices ?? 0} unpaid`}
+        />
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
@@ -85,39 +129,48 @@ export default function Invoices() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && <EmptyRow colSpan={7} text="No invoices match this filter." />}
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
-                <td className="px-4 py-2 font-medium">{r.reference}</td>
-                <td className="px-4 py-2">
-                  {r.customer_name}
-                  <span className="block text-xs text-slate-400">quote #{r.quotation_id}</span>
-                </td>
-                <td className="px-4 py-2 text-slate-600">
-                  {r.kind.replace("_", " ")}
-                  {r.period_key && <span className="text-slate-400"> · {r.period_key}</span>}
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums">{money(r.total)}</td>
-                <td className={`px-4 py-2 text-right tabular-nums ${
-                  Number(r.outstanding) > 0 ? "text-amber-700 font-medium" : "text-slate-400"}`}>
-                  {money(r.outstanding)}
-                </td>
-                <td className="px-4 py-2">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                    r.status === "paid" ? "bg-emerald-100 text-emerald-800"
-                    : "bg-amber-100 text-amber-800"}`}>
-                    {r.status}
-                  </span>
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <button onClick={() => open(r.id)}
-                    data-testid={`open-invoice-${r.id}`}
-                    className="text-xs text-slate-600 border border-slate-200 rounded px-2 py-1 hover:bg-white">
-                    Open
-                  </button>
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-slate-400">
+                  Loading invoices from database...
                 </td>
               </tr>
-            ))}
+            ) : rows.length === 0 ? (
+              <EmptyRow colSpan={7} text="No invoices match this filter." />
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-2 font-medium">{r.reference}</td>
+                  <td className="px-4 py-2">
+                    {r.customer_name}
+                    <span className="block text-xs text-slate-400">quote #{r.quotation_id}</span>
+                  </td>
+                  <td className="px-4 py-2 text-slate-600">
+                    {r.kind.replace("_", " ")}
+                    {r.period_key && <span className="text-slate-400"> · {r.period_key}</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{money(r.total)}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums ${
+                    Number(r.outstanding) > 0 ? "text-amber-700 font-medium" : "text-slate-400"}`}>
+                    {money(r.outstanding)}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                      r.status === "paid" ? "bg-emerald-100 text-emerald-800"
+                      : "bg-amber-100 text-amber-800"}`}>
+                      {r.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <button onClick={() => open(r.id)}
+                      data-testid={`open-invoice-${r.id}`}
+                      className="text-xs text-slate-600 border border-slate-200 rounded px-2 py-1 hover:bg-white">
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -10,7 +10,7 @@ import math
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, or_, select, String
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_internal_user, get_session
@@ -388,12 +388,72 @@ def _invoice_row(session: Session, inv: Invoice) -> dict:
     }
 
 
+@router.get("/invoices/summary")
+def invoices_summary(
+    status: str | None = Query(default=None, pattern="^(paid|unpaid)$"),
+    search: str | None = None,
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> dict:
+    """Aggregated financial metrics calculated directly from the database."""
+    base_stmt = select(Invoice)
+    if status == "paid":
+        base_stmt = base_stmt.where(Invoice.status == InvoiceStatus.PAID)
+    elif status == "unpaid":
+        base_stmt = base_stmt.where(Invoice.status != InvoiceStatus.PAID)
+
+    if search and search.strip():
+        search_clean = search.strip()
+        num_str = search_clean.upper().replace("INV-", "").replace("#", "").lstrip("0")
+        clauses = [Customer.name.ilike(f"%{search_clean}%")]
+        if num_str.isdigit():
+            target_id = int(num_str)
+            clauses.append(Invoice.id == target_id)
+            clauses.append(Quotation.id == target_id)
+        base_stmt = (
+            base_stmt.join(Quotation, Invoice.quotation_id == Quotation.id)
+            .join(Customer, Quotation.customer_id == Customer.id)
+            .where(or_(*clauses))
+        )
+
+    invoices = session.scalars(base_stmt).all()
+    total_count = len(invoices)
+    paid_count = sum(1 for inv in invoices if inv.status == InvoiceStatus.PAID)
+    unpaid_count = total_count - paid_count
+
+    total_billed = sum((inv.total for inv in invoices), Decimal("0.00"))
+    inv_ids = [inv.id for inv in invoices]
+    if inv_ids:
+        total_paid = session.scalar(
+            select(func.sum(Payment.amount)).where(Payment.invoice_id.in_(inv_ids))
+        ) or Decimal("0.00")
+        total_credited = session.scalar(
+            select(func.sum(CreditNote.amount)).where(CreditNote.invoice_id.in_(inv_ids))
+        ) or Decimal("0.00")
+    else:
+        total_paid = Decimal("0.00")
+        total_credited = Decimal("0.00")
+
+    total_outstanding = max(Decimal("0.00"), total_billed - total_credited - total_paid)
+
+    return {
+        "total_invoices": total_count,
+        "paid_invoices": paid_count,
+        "unpaid_invoices": unpaid_count,
+        "total_billed": str(total_billed),
+        "total_paid": str(total_paid),
+        "total_credited": str(total_credited),
+        "total_outstanding": str(total_outstanding),
+    }
+
+
 @router.get("/invoices")
 def list_invoices(
     response: Response,
     page: int | None = Query(default=None, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=200),
     status: str | None = Query(default=None, pattern="^(paid|unpaid)$"),
+    search: str | None = None,
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
@@ -403,6 +463,20 @@ def list_invoices(
         base_stmt = base_stmt.where(Invoice.status == InvoiceStatus.PAID)
     elif status == "unpaid":
         base_stmt = base_stmt.where(Invoice.status != InvoiceStatus.PAID)
+
+    if search and search.strip():
+        search_clean = search.strip()
+        num_str = search_clean.upper().replace("INV-", "").replace("#", "").lstrip("0")
+        clauses = [Customer.name.ilike(f"%{search_clean}%")]
+        if num_str.isdigit():
+            target_id = int(num_str)
+            clauses.append(Invoice.id == target_id)
+            clauses.append(Quotation.id == target_id)
+        base_stmt = (
+            base_stmt.join(Quotation, Invoice.quotation_id == Quotation.id)
+            .join(Customer, Quotation.customer_id == Customer.id)
+            .where(or_(*clauses))
+        )
 
     total_count = session.scalar(
         select(func.count()).select_from(base_stmt.subquery())
