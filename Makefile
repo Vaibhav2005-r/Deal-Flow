@@ -9,8 +9,8 @@ down:
 migrate:       ## alembic upgrade head
 	cd api && alembic upgrade head
 
-migrate-init:  ## generate the FIRST migration (needs postgres running)
-	docker compose up -d postgres
+migrate-init:  ## generate the FIRST migration (needs mysql running)
+	docker compose up -d mysql
 	cd api && alembic revision --autogenerate -m "initial schema"
 
 hooks:         ## wire the golden-test pre-push hook

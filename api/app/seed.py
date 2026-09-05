@@ -808,8 +808,19 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
     """Drop and rebuild. Idempotent by construction."""
     url = database_url or settings.database_url
     engine = create_engine(url, echo=echo, future=True)
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    if "mysql" in str(url):
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
+            conn.commit()
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+        with engine.connect() as conn:
+            conn.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
+            conn.commit()
+    else:
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
 
     rng = random.Random(SEED)
     factory = sessionmaker(bind=engine, future=True)

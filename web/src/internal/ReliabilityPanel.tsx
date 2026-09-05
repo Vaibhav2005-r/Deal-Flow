@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type DecisionLogRow, type ReliabilityStats, type ReplayResult } from "@/lib/api";
+import { Pagination } from "./components";
 
 export default function ReliabilityPanel() {
   const [stats, setStats] = useState<ReliabilityStats | null>(null);
@@ -7,35 +8,45 @@ export default function ReliabilityPanel() {
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Replay modal state
   const [replayingId, setReplayingId] = useState<number | null>(null);
   const [replayResult, setReplayResult] = useState<ReplayResult | null>(null);
   const [replayError, setReplayError] = useState<string | null>(null);
 
-  async function loadData() {
+  useEffect(() => {
+    api.get<ReliabilityStats>("/api/reliability/stats")
+      .then(setStats)
+      .catch(() => {});
+  }, []);
+
+  async function loadLogs() {
     setLoading(true);
     setError(null);
     try {
-      const statsPromise = api.get<ReliabilityStats>("/api/reliability/stats");
-      const logsUrl = selectedAgent
-        ? `/api/reliability/logs?limit=25&agent=${selectedAgent}`
-        : "/api/reliability/logs?limit=25";
-      const logsPromise = api.get<DecisionLogRow[]>(logsUrl);
-
-      const [sData, lData] = await Promise.all([statsPromise, logsPromise]);
-      setStats(sData);
-      setLogs(lData);
+      const q = new URLSearchParams({
+        page: String(page),
+        page_size: String(pageSize),
+        ...(selectedAgent ? { agent: selectedAgent } : {}),
+      });
+      const res = await api.getPaginated<DecisionLogRow[]>(`/api/reliability/logs?${q.toString()}`);
+      setLogs(res.data);
+      setTotalCount(res.totalCount);
+      setTotalPages(res.totalPages);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load reliability panel data");
+      setError(err instanceof Error ? err.message : "Failed to load audit logs");
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData();
-  }, [selectedAgent]);
+    loadLogs();
+  }, [page, pageSize, selectedAgent]);
 
   async function handleReplay(logId: number) {
     setReplayingId(logId);
@@ -61,7 +72,7 @@ export default function ReliabilityPanel() {
           </p>
         </div>
         <button
-          onClick={loadData}
+          onClick={loadLogs}
           disabled={loading}
           className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
         >
@@ -100,7 +111,7 @@ export default function ReliabilityPanel() {
                   {stats.pass_rate_pct.toFixed(1)}%
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  over {stats.verified_calls} verified call(s)
+                  {stats.verified_calls} verified, {stats.skipped_calls} skipped
                 </p>
               </>
             )}
@@ -127,7 +138,10 @@ export default function ReliabilityPanel() {
               return (
                 <div
                   key={agent}
-                  onClick={() => setSelectedAgent(selectedAgent === agent ? "" : agent)}
+                  onClick={() => {
+                    setSelectedAgent(selectedAgent === agent ? "" : agent);
+                    setPage(1);
+                  }}
                   className={`p-3 rounded-lg border text-xs cursor-pointer transition-all ${
                     selectedAgent === agent
                       ? "bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20"
@@ -155,7 +169,9 @@ export default function ReliabilityPanel() {
               </span>
             )}
           </div>
-          <span className="text-xs text-slate-500">Showing last {logs.length} logged decisions</span>
+          <span className="text-xs text-slate-500">
+            Showing {logs.length} of {totalCount} logged decisions
+          </span>
         </div>
 
         {loading ? (
@@ -224,6 +240,21 @@ export default function ReliabilityPanel() {
             </table>
           </div>
         )}
+
+        <div className="p-4 border-t border-slate-200">
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            totalCount={totalCount}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={(sz) => {
+              setPageSize(sz);
+              setPage(1);
+            }}
+            pageSizeOptions={[10, 25, 50, 100]}
+          />
+        </div>
       </div>
 
       {/* Replay Verification Modal */}

@@ -256,3 +256,102 @@ export function FilterTabs({
     </div>
   );
 }
+
+export function Pagination({
+  page,
+  pageSize,
+  totalCount,
+  totalPages,
+  onPageChange,
+  onPageSizeChange,
+  pageSizeOptions = [10, 20, 50, 100],
+}: {
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  onPageChange: (newPage: number) => void;
+  onPageSizeChange?: (newPageSize: number) => void;
+  pageSizeOptions?: number[];
+}) {
+  if (totalCount === 0) return null;
+
+  const start = Math.min((page - 1) * pageSize + 1, totalCount);
+  const end = Math.min(page * pageSize, totalCount);
+
+  // Generate page numbers window
+  const pages: number[] = [];
+  const maxButtons = 5;
+  let startPage = Math.max(1, page - Math.floor(maxButtons / 2));
+  let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+  if (endPage - startPage + 1 < maxButtons) {
+    startPage = Math.max(1, endPage - maxButtons + 1);
+  }
+  for (let i = startPage; i <= endPage; i++) {
+    pages.push(i);
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-600 shadow-2xs">
+      <div className="flex items-center gap-3">
+        <span>
+          Showing <strong className="text-slate-900 font-semibold">{start}</strong> to{" "}
+          <strong className="text-slate-900 font-semibold">{end}</strong> of{" "}
+          <strong className="text-slate-900 font-semibold">{totalCount}</strong> entries
+        </span>
+
+        {onPageSizeChange && (
+          <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 pl-3">
+            <label className="text-slate-500">Per page:</label>
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:border-indigo-500"
+            >
+              {pageSizeOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page <= 1}
+          className="px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+        >
+          ← Prev
+        </button>
+
+        {pages.map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPageChange(p)}
+            className={`min-w-7 h-7 px-2 rounded font-semibold text-xs transition-colors cursor-pointer ${
+              p === page
+                ? "bg-indigo-600 text-white shadow-2xs"
+                : "border border-slate-200 hover:bg-slate-50 text-slate-700"
+            }`}
+          >
+            {p}
+          </button>
+        ))}
+
+        <button
+          type="button"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page >= totalPages}
+          className="px-2.5 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -29,6 +29,9 @@ def get_engine() -> Engine:
         kwargs["connect_args"] = {"check_same_thread": False}
     else:
         kwargs["pool_pre_ping"] = True
+        if "mysql" in url:
+            # Recycle connections before MySQL 8-hour wait_timeout disconnects them
+            kwargs["pool_recycle"] = 3600
     return create_engine(url, **kwargs)
 
 

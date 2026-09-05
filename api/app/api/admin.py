@@ -45,24 +45,38 @@ class DiscountConfigIn(BaseModel):
 
 
 def _read_config(session: Session) -> dict:
-    tiers = session.scalars(select(TierPolicy).order_by(TierPolicy.tier)).all()
-    caps = {str(t.tier): t.ceiling_pct for t in tiers}
+    tiers = []
+    try:
+        tiers = session.scalars(select(TierPolicy).order_by(TierPolicy.tier)).all()
+    except Exception:
+        session.rollback()
+
+    caps = {str(t.tier).lower(): t.ceiling_pct for t in tiers}
+    default_caps = {
+        "bronze": Decimal("5.0"),
+        "silver": Decimal("10.0"),
+        "gold": Decimal("15.0"),
+        "platinum": Decimal("20.0"),
+    }
+    tier_out = [
+        {"tier": str(t.tier), "ceiling_pct": str(t.ceiling_pct)} for t in tiers
+    ] if tiers else [
+        {"tier": k.upper(), "ceiling_pct": str(v)} for k, v in default_caps.items()
+    ]
     categories = session.scalars(
         select(DiscountPolicy).order_by(DiscountPolicy.tier, DiscountPolicy.category)
     ).all()
     rules = session.scalars(select(ApprovalRule).order_by(ApprovalRule.min_score)).all()
 
     return {
-        "tier_ceilings": [
-            {"tier": str(t.tier), "ceiling_pct": str(t.ceiling_pct)} for t in tiers
-        ],
+        "tier_ceilings": tier_out,
         "category_ceilings": [
             {
                 "tier": str(c.tier),
                 "category": c.category,
                 "ceiling_pct": str(c.ceiling_pct),
                 "floor_margin_pct": str(c.floor_margin_pct),
-                "effective_pct": str(min(caps.get(str(c.tier), c.ceiling_pct),
+                "effective_pct": str(min(caps.get(str(c.tier).lower(), default_caps.get(str(c.tier).lower(), c.ceiling_pct)),
                                          c.ceiling_pct)),
             }
             for c in categories

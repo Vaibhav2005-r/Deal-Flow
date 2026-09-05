@@ -743,6 +743,19 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             </motion.div>
           </motion.div>
         </motion.div>
+
+        {/* Customer Portal Link */}
+        <div className="mt-4 text-center">
+          <p className="text-xs text-white/80 drop-shadow-xs">
+            Testing customer negotiation?{" "}
+            <a
+              href="/portal/login"
+              className="font-semibold text-white hover:text-indigo-200 hover:underline transition-colors"
+            >
+              Switch to Customer Portal Login →
+            </a>
+          </p>
+        </div>
       </main>
     </div>
   );

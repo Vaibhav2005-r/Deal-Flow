@@ -4,7 +4,7 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 WORKDIR /srv
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential libpq-dev \
+      build-essential default-libmysqlclient-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml ./

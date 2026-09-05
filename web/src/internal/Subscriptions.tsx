@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type SubscriptionRow } from "@/lib/api";
 import {
-  EmptyRow, ErrorBanner, FilterTabs, PageHeader, StatCard, money,
+  EmptyRow, ErrorBanner, FilterTabs, PageHeader, Pagination, StatCard, money,
 } from "./components";
 
 const FILTERS = [
@@ -23,13 +23,25 @@ export default function Subscriptions() {
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    const q = filter === "all" ? "" : `?status=${filter}`;
-    api.get<SubscriptionRow[]>(`/api/subscriptions${q}`)
-      .then(setRows)
+    const q = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      ...(filter !== "all" ? { status: filter } : {}),
+    });
+    api.getPaginated<SubscriptionRow[]>(`/api/subscriptions?${q.toString()}`)
+      .then((res) => {
+        setRows(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
       .catch((e) => setError(String(e.message)));
-  }, [filter]);
+  }, [filter, page, pageSize]);
 
   const mrr = rows
     .filter((r) => r.status === "active")
@@ -40,12 +52,21 @@ export default function Subscriptions() {
       <PageHeader
         title="Subscriptions"
         subtitle="Every recurring plan across every customer, regardless of which order it came from."
-        actions={<FilterTabs options={FILTERS} value={filter} onChange={setFilter} />}
+        actions={
+          <FilterTabs
+            options={FILTERS}
+            value={filter}
+            onChange={(f) => {
+              setFilter(f);
+              setPage(1);
+            }}
+          />
+        }
       />
       <ErrorBanner error={error} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Subscriptions shown" value={rows.length} />
+        <StatCard label="Total subscriptions" value={totalCount || rows.length} />
         <StatCard label="Active recurring value" value={money(mrr)} tone="emerald"
           hint="per billing cycle" />
         <StatCard label="Next bill" value={rows[0]?.next_bill_date ?? "—"}
@@ -91,6 +112,18 @@ export default function Subscriptions() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

@@ -90,7 +90,7 @@ def build_governance_snapshot(
     if tier_policy is None:
         raise PolicyResolutionError(
             f"no tier_policy row for tier {customer.tier!r} — cannot resolve "
-            f"the tier ceiling, refusing to default"
+            "the tier ceiling, refusing to default"
         )
     tier_ceiling = tier_policy.ceiling_pct
 

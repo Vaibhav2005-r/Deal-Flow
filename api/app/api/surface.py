@@ -11,10 +11,11 @@ Exposes:
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_internal_user, get_session
-from app.models.tables import Quotation, User
+from app.models.tables import DecisionLog, Quotation, User
 from app.services.narrator import narrate_quotation
 from app.services.pdf_export import generate_quote_pdf
 from app.services.reliability import (
@@ -44,13 +45,38 @@ def _load_quote(session: Session, quote_id: int) -> Quotation:
 # --------------------------------------------------------------------------
 
 
+import math
+
+
 @router.get("/deal-health")
 def list_deal_health(
+    response: Response,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=500),
+    alerts_only: bool = False,
     session: Session = Depends(get_session),
     user: User = Depends(current_internal_user),
 ) -> list[dict]:
     """Runs Sentinel on all quotations and returns deal health assessments with alert flags."""
-    return assess_all_quotations(session, actor_id=user.id)
+    all_deals = assess_all_quotations(session, actor_id=user.id)
+    if alerts_only:
+        all_deals = [d for d in all_deals if d.get("alert")]
+
+    total_count = len(all_deals)
+    if page is not None and page_size is not None:
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+        offset = (page - 1) * page_size
+        return all_deals[offset : offset + page_size]
+
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = "1"
+    response.headers["X-Page-Size"] = str(total_count)
+    response.headers["X-Total-Pages"] = "1"
+    return all_deals
 
 
 @router.get("/quotes/{quote_id}/health")
@@ -151,16 +177,36 @@ def get_stats(
 
 @router.get("/reliability/logs")
 def list_logs(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
+    response: Response,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=200),
+    limit: int | None = Query(None, ge=1, le=200),
+    offset: int | None = Query(None, ge=0),
     agent: str | None = Query(None),
     quotation_id: int | None = Query(None),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
-    """Lists recent decision_log entries with input/output snapshots."""
+    """Lists recent decision_log entries with input/output snapshots and pagination headers."""
+    base_stmt = select(DecisionLog)
+    if agent:
+        base_stmt = base_stmt.where(DecisionLog.agent == agent)
+    if quotation_id:
+        base_stmt = base_stmt.where(DecisionLog.quotation_id == quotation_id)
+
+    total_count = session.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+
+    effective_page_size = limit if limit is not None else page_size
+    effective_offset = offset if offset is not None else (page - 1) * effective_page_size
+
+    total_pages = max(1, math.ceil(total_count / effective_page_size)) if total_count > 0 else 1
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(effective_page_size)
+    response.headers["X-Total-Pages"] = str(total_pages)
+
     return list_decision_logs(
-        session, limit=limit, offset=offset, agent=agent, quotation_id=quotation_id
+        session, limit=effective_page_size, offset=effective_offset, agent=agent, quotation_id=quotation_id
     )
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type InvoiceDetailOut, type InvoiceRow } from "@/lib/api";
 import {
-  EmptyRow, ErrorBanner, FilterTabs, PageHeader, StatCard, money,
+  EmptyRow, ErrorBanner, FilterTabs, PageHeader, Pagination, StatCard, money,
 } from "./components";
 
 const FILTERS = [
@@ -16,13 +16,25 @@ export default function Invoices() {
   const [filter, setFilter] = useState("all");
   const [selected, setSelected] = useState<InvoiceDetailOut | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    const q = filter === "all" ? "" : `?status=${filter}`;
-    api.get<InvoiceRow[]>(`/api/invoices${q}`)
-      .then(setRows)
+    const q = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      ...(filter !== "all" ? { status: filter } : {}),
+    });
+    api.getPaginated<InvoiceRow[]>(`/api/invoices?${q.toString()}`)
+      .then((res) => {
+        setRows(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
       .catch((e) => setError(String(e.message)));
-  }, [filter]);
+  }, [filter, page, pageSize]);
 
   function open(id: number) {
     setError(null);
@@ -39,14 +51,23 @@ export default function Invoices() {
       <PageHeader
         title="Invoices"
         subtitle="Every invoice generated from one-time and recurring orders."
-        actions={<FilterTabs options={FILTERS} value={filter} onChange={setFilter} />}
+        actions={
+          <FilterTabs
+            options={FILTERS}
+            value={filter}
+            onChange={(f) => {
+              setFilter(f);
+              setPage(1);
+            }}
+          />
+        }
       />
       <ErrorBanner error={error} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Invoices shown" value={rows.length} />
-        <StatCard label="Total billed" value={money(billed)} />
-        <StatCard label="Outstanding" value={money(outstanding)}
+        <StatCard label="Total invoices" value={totalCount || rows.length} />
+        <StatCard label="Total billed (page)" value={money(billed)} />
+        <StatCard label="Outstanding (page)" value={money(outstanding)}
           tone={outstanding > 0 ? "amber" : "emerald"} />
       </div>
 
@@ -100,6 +121,19 @@ export default function Invoices() {
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+        pageSizeOptions={[10, 20, 50, 100]}
+      />
 
       {selected && <InvoiceDetail invoice={selected} onClose={() => setSelected(null)} />}
     </div>

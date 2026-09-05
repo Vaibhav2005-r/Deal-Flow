@@ -6,9 +6,10 @@ query and shape, they never decide anything.
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -145,16 +146,46 @@ def dashboard(
 
 @router.get("/fulfillment/stock")
 def stock_by_warehouse(
+    response: Response,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
+    warehouse: str | None = None,
+    low_only: bool = False,
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
     """Live stock per warehouse: on hand, reserved, available."""
-    rows = session.execute(
+    base_stmt = (
         select(Stock, Warehouse, Product)
         .join(Warehouse, Stock.warehouse_id == Warehouse.id)
         .join(Product, Stock.product_id == Product.id)
-        .order_by(Warehouse.code, Product.sku)
-    ).all()
+    )
+    if warehouse and warehouse != "all":
+        base_stmt = base_stmt.where(Warehouse.code == warehouse)
+    if low_only:
+        base_stmt = base_stmt.where((Stock.qty_on_hand - Stock.qty_reserved) <= 5)
+
+    total_count = session.scalar(
+        select(func.count()).select_from(base_stmt.subquery())
+    ) or 0
+
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Warehouse.code, Product.sku).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Warehouse.code, Product.sku)
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
+
+    rows = session.execute(stmt).all()
+
     return [
         {
             "warehouse": w.code,
@@ -176,15 +207,37 @@ def stock_by_warehouse(
 
 @router.get("/fulfillment/pending")
 def orders_pending_fulfillment(
+    response: Response,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
     """Orders confirmed but not yet fully shipped."""
-    quotes = session.scalars(
+    base_stmt = (
         select(Quotation)
         .where(Quotation.state.in_(AWAITING_FULFILLMENT))
-        .order_by(Quotation.id.desc())
-    ).all()
+    )
+    total_count = session.scalar(
+        select(func.count()).select_from(base_stmt.subquery())
+    ) or 0
+
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Quotation.id.desc()).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Quotation.id.desc())
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
+
+    quotes = session.scalars(stmt).all()
 
     out = []
     for q in quotes:
@@ -232,18 +285,35 @@ def orders_pending_fulfillment(
 
 @router.get("/subscriptions")
 def list_subscriptions(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     status: str | None = Query(default=None, pattern="^(active|paused|cancelled)$"),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
     """Every recurring plan across every customer, regardless of which order
     it came from."""
-    stmt = select(Subscription).order_by(Subscription.next_bill_date)
+    base_stmt = select(Subscription)
     if status:
-        stmt = stmt.where(Subscription.status == SubscriptionStatus(status))
+        base_stmt = base_stmt.where(Subscription.status == SubscriptionStatus(status))
+
+    total_count = session.scalar(
+        select(func.count()).select_from(base_stmt.subquery())
+    ) or 0
+
+    offset = (page - 1) * page_size
+    stmt = base_stmt.order_by(Subscription.next_bill_date).offset(offset).limit(page_size)
+    subs = session.scalars(stmt).all()
+
+    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Pages"] = str(total_pages)
 
     out = []
-    for sub in session.scalars(stmt).all():
+    for sub in subs:
         quote = session.get(Quotation, sub.quotation_id)
         customer = session.get(Customer, quote.customer_id) if quote else None
         recurring = session.scalars(
@@ -320,17 +390,42 @@ def _invoice_row(session: Session, inv: Invoice) -> dict:
 
 @router.get("/invoices")
 def list_invoices(
+    response: Response,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
     status: str | None = Query(default=None, pattern="^(paid|unpaid)$"),
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
     """Every invoice generated from one-time and recurring orders."""
-    stmt = select(Invoice).order_by(Invoice.id.desc())
+    base_stmt = select(Invoice)
     if status == "paid":
-        stmt = stmt.where(Invoice.status == InvoiceStatus.PAID)
+        base_stmt = base_stmt.where(Invoice.status == InvoiceStatus.PAID)
     elif status == "unpaid":
-        stmt = stmt.where(Invoice.status != InvoiceStatus.PAID)
-    return [_invoice_row(session, inv) for inv in session.scalars(stmt).all()]
+        base_stmt = base_stmt.where(Invoice.status != InvoiceStatus.PAID)
+
+    total_count = session.scalar(
+        select(func.count()).select_from(base_stmt.subquery())
+    ) or 0
+
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Invoice.id.desc()).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Invoice.id.desc())
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
+
+    invoices = session.scalars(stmt).all()
+
+    return [_invoice_row(session, inv) for inv in invoices]
 
 
 @router.get("/invoices/{invoice_id}")

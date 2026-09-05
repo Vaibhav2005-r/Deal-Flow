@@ -46,11 +46,43 @@ DROP FUNCTION IF EXISTS decision_log_is_append_only();
 """
 
 
+CREATE_MYSQL = [
+    """
+    CREATE TRIGGER decision_log_no_update
+        BEFORE UPDATE ON decision_log
+        FOR EACH ROW
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'decision_log is append-only: UPDATE is not permitted';
+    """,
+    """
+    CREATE TRIGGER decision_log_no_delete
+        BEFORE DELETE ON decision_log
+        FOR EACH ROW
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'decision_log is append-only: DELETE is not permitted';
+    """,
+]
+
+DROP_MYSQL = [
+    "DROP TRIGGER IF EXISTS decision_log_no_update;",
+    "DROP TRIGGER IF EXISTS decision_log_no_delete;",
+]
+
+
 def upgrade() -> None:
-    if op.get_bind().dialect.name == "postgresql":
+    dialect = op.get_bind().dialect.name
+    if dialect == "postgresql":
         op.execute(CREATE)
+    elif dialect == "mysql":
+        for stmt in CREATE_MYSQL:
+            op.execute(stmt)
 
 
 def downgrade() -> None:
-    if op.get_bind().dialect.name == "postgresql":
+    dialect = op.get_bind().dialect.name
+    if dialect == "postgresql":
         op.execute(DROP)
+    elif dialect == "mysql":
+        for stmt in DROP_MYSQL:
+            op.execute(stmt)
+

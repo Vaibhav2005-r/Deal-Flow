@@ -8,9 +8,10 @@ copied at the time the line is added.
 
 from __future__ import annotations
 
+import math
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -92,24 +93,53 @@ def catalog_summary(
 
 @router.get("/products")
 def list_products(
+    response: Response,
+    page: int | None = Query(default=None, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=200),
+    category: str | None = None,
     session: Session = Depends(get_session),
     _user: User = Depends(current_internal_user),
 ) -> list[dict]:
+    base_stmt = select(Product)
+    if category and category != "all":
+        base_stmt = base_stmt.where(Product.category == category)
+    total_count = session.scalar(select(func.count()).select_from(base_stmt.subquery())) or 0
+
+    if page is not None and page_size is not None:
+        offset = (page - 1) * page_size
+        stmt = base_stmt.order_by(Product.category, Product.name).offset(offset).limit(page_size)
+        total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = str(total_pages)
+    else:
+        stmt = base_stmt.order_by(Product.category, Product.name)
+        response.headers["X-Total-Count"] = str(total_count)
+        response.headers["X-Page"] = "1"
+        response.headers["X-Page-Size"] = str(total_count)
+        response.headers["X-Total-Pages"] = "1"
+
+    rows = session.scalars(stmt).all()
+
+    if not rows:
+        return []
+
+    p_ids = [p.id for p in rows]
     variant_counts = dict(
         session.execute(
             select(ProductVariant.product_id, func.count())
+            .where(ProductVariant.product_id.in_(p_ids))
             .group_by(ProductVariant.product_id)
         ).all()
     )
     stock_totals = dict(
         session.execute(
             select(Stock.product_id, func.sum(Stock.qty_on_hand - Stock.qty_reserved))
+            .where(Stock.product_id.in_(p_ids))
             .group_by(Stock.product_id)
         ).all()
     )
-    rows = session.scalars(
-        select(Product).order_by(Product.category, Product.name)
-    ).all()
     return [
         {
             "id": p.id, "sku": p.sku, "name": p.name, "category": p.category,

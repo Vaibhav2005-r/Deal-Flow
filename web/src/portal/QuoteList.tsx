@@ -7,6 +7,10 @@ export default function QuoteList() {
   const [quotes, setQuotes] = useState<PortalQuoteSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const navigate = useNavigate();
 
   const user = (() => {
@@ -28,8 +32,13 @@ export default function QuoteList() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get<PortalQuoteSummary[]>("/api/portal/quotes", "portal");
-      setQuotes(data);
+      const res = await api.getPaginated<PortalQuoteSummary[]>(
+        `/api/portal/quotes?page=${page}&page_size=${pageSize}`,
+        "portal"
+      );
+      setQuotes(res.data);
+      setTotalCount(res.totalCount);
+      setTotalPages(res.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load quotations");
     } finally {
@@ -39,7 +48,7 @@ export default function QuoteList() {
 
   useEffect(() => {
     loadQuotes();
-  }, []);
+  }, [page, pageSize]);
 
   function formatCurrency(val: string | number) {
     const n = Number(val);
@@ -70,28 +79,36 @@ export default function QuoteList() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
+      <header className="bg-[#1d4ed8] border-b border-blue-600 px-6 py-3 shadow-md sticky top-0 z-30">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">
-              DF
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-slate-900 leading-tight">DealFlow360</h1>
-              <p className="text-xs text-indigo-600 font-medium">Customer Portal</p>
-            </div>
+          <div className="flex items-center gap-6">
+            <Link
+              to="/portal"
+              className="text-white font-extrabold text-lg tracking-tight hover:opacity-90 flex items-center gap-2"
+            >
+              <div className="w-8 h-8 rounded bg-white text-[#1d4ed8] font-black flex items-center justify-center text-sm shadow-sm">
+                DF
+              </div>
+              DealFlow360
+            </Link>
+
+            <nav className="flex items-center gap-2">
+              <span className="px-4 py-1.5 rounded-full text-xs font-semibold bg-slate-950 text-white shadow-inner">
+                My Quotations
+              </span>
+            </nav>
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-xs font-semibold text-slate-800">
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-bold text-white">
                 {user?.full_name ?? "Portal Contact"}
               </p>
-              <p className="text-xs text-slate-500">Customer Account</p>
+              <p className="text-[11px] text-blue-200">Customer Account</p>
             </div>
             <button
               onClick={handleLogout}
-              className="text-xs text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-md font-medium transition-colors"
+              className="text-xs text-white bg-blue-800 hover:bg-blue-900 border border-blue-400/30 px-3 py-1 rounded font-medium transition-colors"
             >
               Sign out
             </button>
@@ -173,6 +190,57 @@ export default function QuoteList() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {totalCount > 0 && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span>
+                Showing <strong className="text-slate-900 font-semibold">{Math.min((page - 1) * pageSize + 1, totalCount)}</strong> to{" "}
+                <strong className="text-slate-900 font-semibold">{Math.min(page * pageSize, totalCount)}</strong> of{" "}
+                <strong className="text-slate-900 font-semibold">{totalCount}</strong> quotations
+              </span>
+              <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 pl-3">
+                <label className="text-slate-500">Per page:</label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:border-indigo-500"
+                >
+                  {[5, 10, 20, 50].map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="px-3 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+              >
+                ← Prev
+              </button>
+              <span className="px-3 py-1 font-semibold text-slate-800">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="px-3 py-1 rounded border border-slate-200 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors cursor-pointer"
+              >
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </main>

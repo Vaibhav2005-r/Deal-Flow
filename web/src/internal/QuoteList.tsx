@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { api, type Quote } from "@/lib/api";
-import { EmptyRow, PageHeader, RiskBadge, StateBadge, money } from "./components";
+import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, money } from "./components";
 
 interface ColumnDef {
   key: string;
@@ -35,14 +35,28 @@ export default function QuoteList() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState<"recent" | "value_desc" | "value_asc">("recent");
+  const [allQuotes, setAllQuotes] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     setLoading(true);
-    api.get<Quote[]>("/api/quotes")
-      .then(setQuotes)
+    const q = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      all_quotes: String(allQuotes),
+    });
+    api.getPaginated<Quote[]>(`/api/quotes?${q.toString()}`)
+      .then((res) => {
+        setQuotes(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
       .catch(() => setQuotes([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [allQuotes, page, pageSize]);
 
   // Filtered & Sorted quotes
   const filteredQuotes = useMemo(() => {
@@ -100,6 +114,15 @@ export default function QuoteList() {
         subtitle="Every quotation in one pipeline view. Click a card to open it."
         actions={
           <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setAllQuotes(!allQuotes)}
+              data-testid="toggle-scope"
+              className={`border rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                allQuotes ? "bg-slate-100 border-slate-300 text-slate-800" : "bg-white border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              {allQuotes ? "Showing all quotes" : "Showing my quotes"}
+            </button>
             <button
               onClick={() => setView(view === "board" ? "table" : "board")}
               data-testid="toggle-view"
@@ -335,6 +358,19 @@ export default function QuoteList() {
           </div>
         </div>
       )}
+
+      {/* 5. Pagination */}
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }
