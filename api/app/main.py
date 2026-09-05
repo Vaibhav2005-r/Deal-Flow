@@ -34,6 +34,16 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[
+        "X-Total-Count",
+        "X-Page",
+        "X-Page-Size",
+        "X-Total-Pages",
+        "x-total-count",
+        "x-page",
+        "x-page-size",
+        "x-total-pages",
+    ],
 )
 
 register_error_handlers(app)
@@ -48,6 +58,32 @@ app.include_router(catalog.router)
 app.include_router(admin.router)
 app.include_router(portal.router)
 app.include_router(surface.router)
+
+
+@app.on_event("startup")
+def on_startup():
+    try:
+        from decimal import Decimal
+        from sqlalchemy import func, select
+        from app.db import SessionLocal, get_engine
+        from app.models.tables import Entity, Tier, TierPolicy
+
+        engine = get_engine()
+        Entity.metadata.create_all(bind=engine, checkfirst=True)
+        with SessionLocal() as s:
+            try:
+                count = s.scalar(select(func.count()).select_from(TierPolicy)) or 0
+                if count == 0:
+                    s.add_all([
+                        TierPolicy(tier=Tier.BRONZE, ceiling_pct=Decimal("5.00")),
+                        TierPolicy(tier=Tier.SILVER, ceiling_pct=Decimal("10.00")),
+                        TierPolicy(tier=Tier.GOLD, ceiling_pct=Decimal("15.00")),
+                    ])
+                    s.commit()
+            except Exception:
+                s.rollback()
+    except Exception:
+        pass
 
 
 @app.get("/health", tags=["meta"])

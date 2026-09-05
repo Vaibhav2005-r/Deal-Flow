@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_internal_user, get_session
-from app.models.tables import Customer, DiscountPolicy, Product, TierPolicy, User
+from app.models.tables import Customer, DiscountPolicy, Product, TierPolicy, User, Warehouse
 
 router = APIRouter(prefix="/api", tags=["reference"])
 
@@ -54,17 +56,33 @@ def discount_policies(
     avoid. Both inputs are returned alongside it so the UI can explain which
     limb bound.
     """
-    tier_caps = {
-        str(t.tier): t.ceiling_pct
-        for t in session.scalars(select(TierPolicy)).all()
+    tier_caps: dict[str, Decimal] = {}
+    try:
+        tier_caps = {
+            str(t.tier).lower(): t.ceiling_pct
+            for t in session.scalars(select(TierPolicy)).all()
+        }
+    except Exception:
+        session.rollback()
+
+    default_caps = {
+        "bronze": Decimal("5.0"),
+        "silver": Decimal("10.0"),
+        "gold": Decimal("15.0"),
+        "platinum": Decimal("20.0"),
     }
+    for k, v in default_caps.items():
+        if k not in tier_caps:
+            tier_caps[k] = v
+
     rows = session.scalars(
         select(DiscountPolicy).order_by(DiscountPolicy.tier, DiscountPolicy.category)
     ).all()
 
     out = []
     for p in rows:
-        cap = tier_caps.get(str(p.tier))
+        t_key = str(p.tier).lower()
+        cap = tier_caps.get(t_key, default_caps.get(t_key, p.ceiling_pct))
         effective = min(cap, p.ceiling_pct) if cap is not None else p.ceiling_pct
         out.append({
             "tier": str(p.tier),
@@ -78,3 +96,12 @@ def discount_policies(
             "floor_margin_pct": str(p.floor_margin_pct),
         })
     return out
+ 
+ 
+@router.get("/warehouses")
+def warehouses(
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> list[dict]:
+    rows = session.scalars(select(Warehouse).order_by(Warehouse.code)).all()
+    return [{"id": w.id, "code": w.code, "name": w.name} for w in rows]

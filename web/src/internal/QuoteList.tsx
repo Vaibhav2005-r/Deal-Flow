@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Quote } from "@/lib/api";
-import { EmptyRow, PageHeader, RiskBadge, StateBadge, money } from "./components";
+import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, money } from "./components";
 
 /** Screen 3 — Quotations.
  *
@@ -28,10 +28,26 @@ const COLUMNS: { key: string; label: string; states: string[] }[] = [
 export default function QuoteList() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [view, setView] = useState<"board" | "table">("board");
+  const [allQuotes, setAllQuotes] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    api.get<Quote[]>("/api/quotes").then(setQuotes).catch(() => setQuotes([]));
-  }, []);
+    const q = new URLSearchParams({
+      page: String(page),
+      page_size: String(pageSize),
+      all_quotes: String(allQuotes),
+    });
+    api.getPaginated<Quote[]>(`/api/quotes?${q.toString()}`)
+      .then((res) => {
+        setQuotes(res.data);
+        setTotalCount(res.totalCount);
+        setTotalPages(res.totalPages);
+      })
+      .catch(() => setQuotes([]));
+  }, [allQuotes, page, pageSize]);
 
   const byColumn = useMemo(() => {
     const map: Record<string, Quote[]> = {};
@@ -48,6 +64,15 @@ export default function QuoteList() {
         subtitle="Every quotation in one pipeline view. Click a card to open it."
         actions={
           <>
+            <button
+              onClick={() => setAllQuotes(!allQuotes)}
+              data-testid="toggle-scope"
+              className={`border rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                allQuotes ? "bg-slate-100 border-slate-300 text-slate-800" : "bg-white border-slate-300 text-slate-600"
+              }`}
+            >
+              {allQuotes ? "Showing all quotes" : "Showing my quotes"}
+            </button>
             <button
               onClick={() => setView(view === "board" ? "table" : "board")}
               data-testid="toggle-view"
@@ -75,7 +100,7 @@ export default function QuoteList() {
                 </span>
               </div>
               <div className="space-y-2 max-h-[32rem] overflow-y-auto">
-                {(byColumn[col.key] ?? []).slice(0, 40).map((q) => (
+                {(byColumn[col.key] ?? []).map((q) => (
                   <Link
                     key={q.id}
                     to={`/quotes/${q.id}`}
@@ -117,7 +142,7 @@ export default function QuoteList() {
             </thead>
             <tbody>
               {quotes.length === 0 && <EmptyRow colSpan={6} text="No quotations yet." />}
-              {quotes.slice(0, 60).map((q) => (
+              {quotes.map((q) => (
                 <tr key={q.id} className="border-t border-slate-100">
                   <td className="px-4 py-2 text-slate-500">
                     <Link to={`/quotes/${q.id}`} className="hover:underline">{q.id}</Link>
@@ -137,6 +162,18 @@ export default function QuoteList() {
           </table>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        onPageSizeChange={(sz) => {
+          setPageSize(sz);
+          setPage(1);
+        }}
+      />
     </div>
   );
 }

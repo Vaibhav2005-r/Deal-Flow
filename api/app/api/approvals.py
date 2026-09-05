@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+import math
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -29,26 +30,57 @@ ROLE_TO_STEP = {Role.MANAGER: "SALES_MANAGER", Role.FINANCE: "FINANCE"}
 
 @router.get("/approvals", response_model=list[QuoteOut])
 def approval_queue(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
+    status: str = Query(default="pending"),
     session: Session = Depends(get_session),
     user: User = Depends(current_internal_user),
 ) -> list[QuoteOut]:
-    """Quotations waiting on THIS approver's step."""
+    """Quotations waiting on or resolved for THIS approver's step."""
     step_role = ROLE_TO_STEP.get(user.role)
     stmt = (
         select(Quotation)
         .join(ApprovalRequest, ApprovalRequest.quotation_id == Quotation.id)
-        .where(ApprovalRequest.decision == ApprovalDecision.PENDING)
-        .where(
-            Quotation.state.in_([QuoteState.PENDING_MANAGER, QuoteState.PENDING_FINANCE])
-        )
         .order_by(Quotation.id.desc())
         .distinct()
     )
+    if status == "returned":
+        stmt = stmt.where(
+            ApprovalRequest.decision.in_([ApprovalDecision.RETURNED, ApprovalDecision.REJECTED])
+        )
+    elif status == "approved":
+        stmt = stmt.where(ApprovalRequest.decision == ApprovalDecision.APPROVED)
+    else:
+        stmt = stmt.where(ApprovalRequest.decision == ApprovalDecision.PENDING).where(
+            Quotation.state.in_([QuoteState.PENDING_MANAGER, QuoteState.PENDING_FINANCE])
+        )
+
     if step_role:
         stmt = stmt.where(ApprovalRequest.approver_role == step_role)
     elif user.role != Role.ADMIN:
+        response.headers["X-Total-Count"] = "0"
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)
+        response.headers["X-Total-Pages"] = "1"
         return []
-    return [quote_out(session, q) for q in session.scalars(stmt).all()]
+
+    # Count total matching in database
+    total_count = session.scalar(
+        select(func.count()).select_from(stmt.subquery())
+    ) or 0
+
+    # Paginate in database
+    offset = (page - 1) * page_size
+    paged_stmt = stmt.offset(offset).limit(page_size)
+    items = [quote_out(session, q) for q in session.scalars(paged_stmt).all()]
+
+    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Pages"] = str(total_pages)
+    return items
 
 
 def _decide(

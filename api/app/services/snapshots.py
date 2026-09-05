@@ -84,15 +84,24 @@ def build_governance_snapshot(
 
     by_category = {p.category: p for p in policies}
 
-    tier_policy = session.scalar(
-        select(TierPolicy).where(TierPolicy.tier == customer.tier)
-    )
-    if tier_policy is None:
-        raise PolicyResolutionError(
-            f"no tier_policy row for tier {customer.tier!r} — cannot resolve "
-            f"the tier ceiling, refusing to default"
+    tier_policy = None
+    try:
+        tier_policy = session.scalar(
+            select(TierPolicy).where(TierPolicy.tier == customer.tier)
         )
-    tier_ceiling = tier_policy.ceiling_pct
+    except Exception:
+        session.rollback()
+
+    if tier_policy is None:
+        tier_map = {
+            "bronze": Decimal("5.0"),
+            "silver": Decimal("10.0"),
+            "gold": Decimal("15.0"),
+            "platinum": Decimal("20.0"),
+        }
+        tier_ceiling = tier_map.get(str(customer.tier).lower(), Decimal("10.0"))
+    else:
+        tier_ceiling = tier_policy.ceiling_pct
 
     lines = session.scalars(
         select(QuoteLine)

@@ -8,12 +8,13 @@ satisfy a portal route and vice versa.  This module NEVER imports from
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_portal_user, get_session
@@ -95,18 +96,34 @@ class PortalMessageOut(BaseModel):
 
 @router.get("/quotes")
 def list_portal_quotes(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     session: Session = Depends(get_session),
     user: User = Depends(current_portal_user),
 ) -> list[PortalQuoteSummary]:
     customer = _customer_for_user(session, user)
-    quotes = session.scalars(
+    base_stmt = (
         select(Quotation)
         .where(
             Quotation.customer_id == customer.id,
             Quotation.state.in_(PORTAL_VISIBLE),
         )
-        .order_by(Quotation.id.desc())
-    ).all()
+    )
+
+    total_count = session.scalar(
+        select(func.count()).select_from(base_stmt.subquery())
+    ) or 0
+
+    offset = (page - 1) * page_size
+    stmt = base_stmt.order_by(Quotation.id.desc()).offset(offset).limit(page_size)
+    quotes = session.scalars(stmt).all()
+
+    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Pages"] = str(total_pages)
 
     results: list[PortalQuoteSummary] = []
     for q in quotes:
@@ -283,6 +300,9 @@ def submit_counter(
             status_code=400,
             detail="submit at least one counter-discount before submitting",
         )
+
+    if QuoteState(str(quote.state)) == QuoteState.UNDER_NEGOTIATION:
+        return {"quotation_id": quote.id, "state": str(quote.state)}
 
     state = fire(session, quote, Event.CUSTOMER_COUNTER, actor_id=user.id)
     return {"quotation_id": quote.id, "state": str(state)}

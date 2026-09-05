@@ -5,8 +5,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select
+import math
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import (
@@ -56,16 +58,40 @@ def _check_version(quote: Quotation, expected: int | None) -> int:
 
 @router.get("", response_model=list[QuoteOut])
 def list_quotes(
+    response: Response,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
     state: str | None = None,
+    all_quotes: bool = False,
     session: Session = Depends(get_session),
     user: User = Depends(current_internal_user),
 ) -> list[QuoteOut]:
-    stmt = select(Quotation).order_by(Quotation.id.desc()).limit(200)
+    base_query = select(Quotation)
     if state:
-        stmt = stmt.where(Quotation.state == state)
-    if user.role == Role.REP:
-        stmt = stmt.where(Quotation.rep_id == user.id)
-    return [quote_out(session, q) for q in session.scalars(stmt).all()]
+        base_query = base_query.where(Quotation.state == state)
+    if user.role == Role.REP and not all_quotes:
+        has_quotes = session.scalar(
+            select(func.count()).select_from(Quotation).where(Quotation.rep_id == user.id)
+        )
+        if has_quotes and has_quotes > 0:
+            base_query = base_query.where(Quotation.rep_id == user.id)
+
+    # Compute total count in database
+    total_count = session.scalar(
+        select(func.count()).select_from(base_query.subquery())
+    ) or 0
+
+    # Paginate in database
+    offset = (page - 1) * page_size
+    stmt = base_query.order_by(Quotation.id.desc()).offset(offset).limit(page_size)
+    items = [quote_out(session, q) for q in session.scalars(stmt).all()]
+
+    total_pages = max(1, math.ceil(total_count / page_size)) if total_count > 0 else 1
+    response.headers["X-Total-Count"] = str(total_count)
+    response.headers["X-Page"] = str(page)
+    response.headers["X-Page-Size"] = str(page_size)
+    response.headers["X-Total-Pages"] = str(total_pages)
+    return items
 
 
 @router.get("/{quote_id}", response_model=QuoteOut)
@@ -241,4 +267,42 @@ def get_quote_messages(
         }
         for m in messages
     ]
+
+
+class MessageIn(BaseModel):
+    body: str
+    quote_line_id: int | None = None
+    counter_discount_pct: Decimal | None = None
+
+
+@router.post("/{quote_id}/messages")
+def post_quote_message(
+    quote_id: int,
+    body: MessageIn,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_internal_user),
+) -> dict:
+    """Internal rep posts a message to the quotation portal negotiation thread."""
+    quote = _load(session, quote_id)
+    from app.models.tables import PortalMessage
+    msg = PortalMessage(
+        quotation_id=quote.id,
+        quote_line_id=body.quote_line_id,
+        author_id=user.id,
+        body=body.body,
+        counter_discount_pct=body.counter_discount_pct,
+    )
+    session.add(msg)
+    session.flush()
+    return {
+        "id": msg.id,
+        "author_name": user.full_name,
+        "body": msg.body,
+        "quote_line_id": msg.quote_line_id,
+        "counter_discount_pct": (
+            str(msg.counter_discount_pct) if msg.counter_discount_pct is not None else None
+        ),
+        "created_at": str(msg.created_at),
+    }
+
 
