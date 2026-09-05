@@ -17,24 +17,30 @@ interface RoleOption {
   label: string;
 }
 
-const ROLES: RoleOption[] = [
-  { id: "rep", label: "Rep" },
-  { id: "manager", label: "Manager" },
-  { id: "finance", label: "Finance" },
-];
+/**
+ * Only what self-service registration can actually grant.
+ *
+ * Offering Manager and Finance told the user they were creating an approver
+ * account while the server (correctly) created a rep. Approver roles are
+ * granted by an existing admin.
+ */
+const ROLES: RoleOption[] = [{ id: "rep", label: "Sales Rep" }];
 
-const DEMO_CREDENTIALS: Record<"rep" | "manager" | "finance", { email: string; pass: string }> = {
-  rep: { email: "priya.raghavan@dealflow.example", pass: "priya.raghavan@dealflow.example" },
-  manager: { email: "james.whitfield@dealflow.example", pass: "james.whitfield@dealflow.example" },
-  finance: { email: "aisha.karim@dealflow.example", pass: "aisha.karim@dealflow.example" },
-};
+/**
+ * No demo credentials.
+ *
+ * This map auto-filled real seeded logins, password included, into the form.
+ * They are working accounts, and both repositories are public. Everyone types
+ * their own credentials.
+ */
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
   const [selectedRole, setSelectedRole] = useState<"rep" | "manager" | "finance">("rep");
   const [fullName, setFullName] = useState<string>("");
-  const [email, setEmail] = useState<string>("priya.raghavan@dealflow.example");
-  const [password, setPassword] = useState<string>("priya.raghavan@dealflow.example");
+  // start empty: a prefilled real login is still a published credential
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(false);
   const [agreedToTerms, setAgreedToTerms] = useState<boolean>(true);
@@ -78,11 +84,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setSuccessMessage(null);
     setToastMessage(null);
 
-    // If on Sign In tab, prefill demo credentials for the role
-    if (activeTab === "signin") {
-      setEmail(DEMO_CREDENTIALS[role].email);
-      setPassword(DEMO_CREDENTIALS[role].pass);
-    }
   };
 
   const handleTabChange = (tab: "signin" | "create") => {
@@ -90,14 +91,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    if (tab === "signin") {
-      setEmail(DEMO_CREDENTIALS[selectedRole].email);
-      setPassword(DEMO_CREDENTIALS[selectedRole].pass);
-    } else {
-      setEmail("");
-      setPassword("");
-      setFullName("");
-    }
+    setEmail("");
+    setPassword("");
+    setFullName("");
   };
 
   async function submit(e: React.FormEvent) {
@@ -120,7 +116,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           email: cleanEmail,
           password,
           full_name: fullName.trim() || undefined,
-          role: selectedRole,
         });
 
         // Automatically log the user in with their newly created account
