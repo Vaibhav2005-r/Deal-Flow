@@ -71,20 +71,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-
-    // If on Sign In tab and field is either empty or had a previous demo email, fill with demo account
-    if (activeTab === "signin") {
-      if (role === "finance") {
-        setEmail("aisha.karim@dealflow.example");
-        setPassword("aisha.karim@dealflow.example");
-      } else if (role === "manager") {
-        setEmail("james.whitfield@dealflow.example");
-        setPassword("james.whitfield@dealflow.example");
-      } else if (role === "rep") {
-        setEmail("priya.raghavan@dealflow.example");
-        setPassword("priya.raghavan@dealflow.example");
-      }
-    }
   };
 
   const handleTabChange = (tab: "signin" | "create") => {
@@ -92,11 +78,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    if (tab === "create") {
-      setEmail("");
-      setPassword("");
-      setFullName("");
-    }
+    setEmail("");
+    setPassword("");
+    setFullName("");
   };
 
   async function submit(e: React.FormEvent) {
