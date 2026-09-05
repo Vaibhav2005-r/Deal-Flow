@@ -32,6 +32,9 @@ async function request<T>(
     } catch {
       /* non-JSON error body */
     }
+    if (res.status === 500 && (detail === "500" || detail.includes("Internal Server Error") || detail.includes("ECONNREFUSED"))) {
+      detail = "Cannot connect to DealFlow backend (port 8000). Please verify the backend API server is running.";
+    }
     throw new ApiError(res.status, String(detail));
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -62,6 +65,9 @@ export const api = {
         detail = body.detail ?? body.error ?? detail;
       } catch {
         /* non-JSON error body */
+      }
+      if (res.status === 500 && (detail === "500" || detail.includes("Internal Server Error") || detail.includes("ECONNREFUSED"))) {
+        detail = "Cannot connect to DealFlow backend (port 8000). Please verify the backend API server is running.";
       }
       throw new ApiError(res.status, String(detail));
     }
