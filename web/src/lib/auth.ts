@@ -115,17 +115,9 @@ export function getInternalRole(): string {
 export function isFinanceUser(): boolean {
   const user = getCurrentUser();
   const rawRole = user?.role ? String(user.role).toLowerCase() : "";
-  if (rawRole.includes("rep") || rawRole.includes("manager")) {
+  if (rawRole.includes("rep") || rawRole.includes("manager") || rawRole.includes("admin")) {
     return false;
   }
-  if (rawRole.includes("finance")) {
-    return true;
-  }
-  const email = user?.email ? String(user.email).toLowerCase() : "";
-  if (email.includes("aisha") || email.includes("finance")) {
-    return true;
-  }
-  // Default to true for finance role if no other explicit rep/manager role
-  return true;
+  return rawRole.includes("finance");
 }
 

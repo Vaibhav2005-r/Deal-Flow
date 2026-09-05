@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
-import { clearToken, getCurrentUser, getInternalRole, getRoleDesignation, hasScope, isFinanceUser } from "@/lib/auth";
+import { api } from "@/lib/api";
+import { clearToken, getCurrentUser, getInternalRole, getRoleDesignation, hasScope, isFinanceUser, type InternalUserInfo } from "@/lib/auth";
 import Approvals from "./Approvals";
 import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
@@ -33,6 +34,7 @@ export default function InternalRouter() {
   const [authed, setAuthed] = useState(hasScope("internal"));
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [currentUserData, setCurrentUserData] = useState<InternalUserInfo | null>(() => getCurrentUser());
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,19 +47,38 @@ export default function InternalRouter() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />;
+  // Live profile synchronizer with database on mount
+  useEffect(() => {
+    if (authed) {
+      api.get<InternalUserInfo>("/api/auth/me")
+        .then((profile) => {
+          if (profile && profile.email) {
+            setCurrentUserData(profile);
+            localStorage.setItem(
+              "df360.internal.user",
+              JSON.stringify(profile)
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [authed]);
 
-  const user = getCurrentUser();
-  const roleName = getInternalRole();
-  const isFinance = isFinanceUser();
+  if (!authed) {
+    return (
+      <Login
+        onLogin={() => {
+          setAuthed(true);
+          setCurrentUserData(getCurrentUser());
+        }}
+      />
+    );
+  }
+
+  const user = currentUserData || getCurrentUser();
+  const roleName = user?.role ? String(user.role).toLowerCase() : getInternalRole();
+  const isFinance = roleName.includes("finance") || isFinanceUser();
   const designation = getRoleDesignation(roleName);
-  const userEmail =
-    user?.email ||
-    (roleName === "finance"
-      ? "aisha.karim@dealflow.example"
-      : user?.full_name
-      ? `${user.full_name.toLowerCase().replace(/\s+/g, ".")}@dealflow.example`
-      : "user@dealflow360.local");
 
   const initials = (user?.full_name ?? "User")
     .split(" ")
@@ -203,7 +224,7 @@ export default function InternalRouter() {
                 type="button"
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 rounded-lg cursor-pointer transition-all shadow-2xs group"
-                title="Click to view logged in email and designation"
+                title="Click to view profile & designation"
               >
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-xs font-semibold text-slate-800 group-hover:text-slate-900" data-testid="whoami">
@@ -257,21 +278,6 @@ export default function InternalRouter() {
 
                   {/* Account Details List */}
                   <div className="py-3 space-y-2.5 text-xs">
-                    {/* Logged in Email */}
-                    <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
-                      <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] text-slate-400 block font-medium">Logged in Email</span>
-                        <span className="font-bold text-slate-800 text-[11px] truncate block">
-                          {userEmail}
-                        </span>
-                      </div>
-                    </div>
-
                     {/* Official Designation */}
                     <div className="flex items-center gap-2.5 p-2 bg-slate-50 border border-slate-100 rounded-xl">
                       <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
@@ -348,7 +354,7 @@ export default function InternalRouter() {
             <div className="sm:hidden flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
               <div>
                 <span className="text-xs font-semibold text-slate-800 block">{user?.full_name ?? "User"}</span>
-                <span className="text-[10px] text-slate-500 block">{userEmail}</span>
+                <span className="text-[10px] text-[#1d72f2] font-medium block">{designation}</span>
               </div>
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.2 rounded border ${getRoleBadgeStyle(

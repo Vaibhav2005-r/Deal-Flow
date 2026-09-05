@@ -78,9 +78,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    setEmail("");
-    setPassword("");
-    setFullName("");
   };
 
   async function submit(e: React.FormEvent) {
@@ -88,24 +85,35 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setToastMessage(null);
 
+    const cleanEmail = email.trim().toLowerCase();
+
     if (activeTab === "create") {
       setBusy(true);
       try {
-        await api.post<{
+        const res = await api.post<{
           token: string;
           role: string;
           full_name: string;
           user_id: number;
+          email?: string;
         }>("/api/auth/register", {
-          email: email.trim(),
+          email: cleanEmail,
           password,
           full_name: fullName.trim() || undefined,
           role: selectedRole,
         });
 
-        // Account created successfully -> Switch to signin tab with clear prompt to sign in
-        setActiveTab("signin");
-        setSuccessMessage("Account created successfully! Please sign in with your password to continue.");
+        // Automatically log the user in with their newly created account
+        setToken("internal", res.token);
+        localStorage.setItem(
+          "df360.internal.user",
+          JSON.stringify({
+            ...res,
+            email: res.email || cleanEmail,
+            role: res.role || selectedRole,
+          })
+        );
+        onLogin();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to create account. Please check your details.");
       } finally {
@@ -122,14 +130,14 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         full_name: string;
         user_id: number;
         email?: string;
-      }>("/api/auth/login", { email: email.trim(), password });
+      }>("/api/auth/login", { email: cleanEmail, password });
 
       setToken("internal", res.token);
       localStorage.setItem(
         "df360.internal.user",
         JSON.stringify({
           ...res,
-          email: email.trim(),
+          email: res.email || cleanEmail,
           role: res.role || selectedRole,
         })
       );

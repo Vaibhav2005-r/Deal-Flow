@@ -36,6 +36,7 @@ class TokenResponse(BaseModel):
     role: str
     user_id: int
     full_name: str
+    email: str | None = None
 
 
 class LineIn(BaseModel):

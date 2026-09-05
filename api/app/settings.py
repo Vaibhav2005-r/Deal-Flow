@@ -4,13 +4,23 @@ in on a Snapshot."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_API_DIR = Path(__file__).resolve().parent.parent
+_ENV_FILE = _API_DIR / ".env"
+_DEFAULT_DB = f"sqlite:///{(_API_DIR / 'dealflow.db').as_posix()}"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(str(_ENV_FILE), ".env", "api/.env"),
+        extra="ignore",
+    )
 
-    database_url: str = "mysql+pymysql://root:Vaibhav%408113@localhost:3306/dealflow"
+    database_url: str = _DEFAULT_DB
     api_title: str = "DealFlow360"
     api_version: str = "0.1.0"
 
@@ -26,6 +36,16 @@ class Settings(BaseSettings):
     # §9 — the one LLM call. Off by default; the template path is complete.
     narrator_enabled: bool = False
     narrator_timeout_ms: int = 800
+
+    @field_validator("database_url", mode="after")
+    @classmethod
+    def resolve_sqlite_path(cls, v: str) -> str:
+        if v.startswith("sqlite:///") and not v.startswith("sqlite:////") and not (len(v) > 11 and v[11] == ":"):
+            rel_path = v[len("sqlite:///"):]
+            if rel_path and rel_path != ":memory:":
+                abs_path = (_API_DIR / rel_path).resolve()
+                return f"sqlite:///{abs_path.as_posix()}"
+        return v
 
 
 settings = Settings()

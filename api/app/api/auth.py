@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
+from app.api.deps import current_internal_user, get_session
 from app.api.schemas import LoginRequest, RegisterRequest, SignupRequest, TokenResponse
 from app.api.security import hash_password, issue_token, verify_password
 from app.models.enums import Role
@@ -28,11 +28,18 @@ def login(body: LoginRequest, session: Session = Depends(get_session)) -> TokenR
 
     scope = "portal" if user.role == Role.PORTAL else "internal"
     return TokenResponse(
-        token=issue_token(user.id, scope, str(user.role)),
+        token=issue_token(
+            user.id,
+            scope,
+            str(user.role),
+            email=user.email,
+            full_name=user.full_name,
+        ),
         scope=scope,
         role=str(user.role),
         user_id=user.id,
         full_name=user.full_name,
+        email=user.email,
     )
 
 
@@ -67,11 +74,18 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)) -> Toke
         raise
 
     return TokenResponse(
-        token=issue_token(user.id, "internal", str(user.role)),
+        token=issue_token(
+            user.id,
+            "internal",
+            str(user.role),
+            email=user.email,
+            full_name=user.full_name,
+        ),
         scope="internal",
         role=str(user.role),
         user_id=user.id,
         full_name=user.full_name,
+        email=user.email,
     )
 
 
@@ -118,12 +132,31 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
         raise
 
     return TokenResponse(
-        token=issue_token(user.id, "internal", str(user.role)),
+        token=issue_token(
+            user.id,
+            "internal",
+            str(user.role),
+            email=user.email,
+            full_name=user.full_name,
+        ),
         scope="internal",
         role=str(user.role),
         user_id=user.id,
         full_name=user.full_name,
+        email=user.email,
     )
+
+
+@router.get("/me")
+def get_current_user_profile(user: User = Depends(current_internal_user)) -> dict:
+    """Return authenticated internal user identity and email from database."""
+    return {
+        "id": user.id,
+        "user_id": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "role": str(user.role),
+    }
 
 
 @router.get("/profiles")
@@ -145,3 +178,4 @@ def list_profiles(session: Session = Depends(get_session)) -> list[dict]:
         }
         for u in users
     ]
+

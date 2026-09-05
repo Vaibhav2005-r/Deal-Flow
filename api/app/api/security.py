@@ -30,9 +30,20 @@ def _sign(payload: bytes) -> str:
     ).hexdigest()[:32]
 
 
-def issue_token(user_id: int, scope: str, role: str) -> str:
+def issue_token(
+    user_id: int,
+    scope: str,
+    role: str,
+    email: str | None = None,
+    full_name: str | None = None,
+) -> str:
+    claims: dict[str, str | int] = {"uid": user_id, "scope": scope, "role": role}
+    if email:
+        claims["email"] = email
+    if full_name:
+        claims["full_name"] = full_name
     payload = json.dumps(
-        {"uid": user_id, "scope": scope, "role": role},
+        claims,
         sort_keys=True, separators=(",", ":"),
     ).encode()
     body = base64.urlsafe_b64encode(payload).decode().rstrip("=")
