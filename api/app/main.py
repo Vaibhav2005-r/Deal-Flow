@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import approvals, auth, quotes, reference
+from app.api import approvals, auth, fulfillment, portal, quotes, reference, surface
 from app.api.errors import register_error_handlers
 from app.settings import settings
 
@@ -31,6 +31,9 @@ app.include_router(auth.router)
 app.include_router(reference.router)
 app.include_router(quotes.router)
 app.include_router(approvals.router)
+app.include_router(fulfillment.router)
+app.include_router(portal.router)
+app.include_router(surface.router)
 
 
 @app.get("/health", tags=["meta"])

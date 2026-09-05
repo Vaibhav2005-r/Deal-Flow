@@ -22,6 +22,7 @@ from decimal import Decimal
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app import affinity
 from app.models.base import Base
 from app.models.enums import (
     ApprovalDecision,
@@ -372,6 +373,43 @@ def seed_demo_quote(session: Session, ref: dict) -> int:
     return quote.id
 
 
+def seed_portal_demo_quote(session: Session, ref: dict) -> int:
+    """Seed a quote already in SENT state for the customer portal demo.
+
+    Customer 0 (Northwind Logistics, portal1@northwind.example).
+    Has 2 lines (Case A) and is in SENT state awaiting customer review.
+    """
+    rep = next(u for u in ref["users"] if u.role == Role.REP)
+    customer = next(c for c in ref["customers"] if c.tier == Tier.GOLD)
+    laptop = next(p for p in ref["products"] if p.sku == "HW-LT-14")
+    setup = next(p for p in ref["products"] if p.sku == "SV-INST-01")
+
+    quote = Quotation(
+        customer_id=customer.id,
+        rep_id=rep.id,
+        state=QuoteState.SENT,
+        version=2,
+        risk_score=Decimal("41.9"),
+    )
+    session.add(quote)
+    session.flush()
+
+    session.add(QuoteLine(
+        quotation_id=quote.id, product_id=laptop.id, qty=1,
+        unit_price=Decimal("100000"), discount_pct=Decimal("12"),
+        ceiling_pct_applied=Decimal("15"), margin_pct=Decimal("30"),
+        is_recurring=False,
+    ))
+    session.add(QuoteLine(
+        quotation_id=quote.id, product_id=setup.id, qty=1,
+        unit_price=Decimal("20000"), discount_pct=Decimal("18"),
+        ceiling_pct_applied=Decimal("10"), margin_pct=Decimal("14"),
+        is_recurring=False,
+    ))
+    session.flush()
+    return quote.id
+
+
 def run(database_url: str | None = None, echo: bool = False) -> dict:
     """Drop and rebuild. Idempotent by construction."""
     url = database_url or settings.database_url
@@ -386,6 +424,9 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
         ref = seed_reference(session, rng)
         orders = seed_history(session, ref, rng)
         demo_quote_id = seed_demo_quote(session, ref)
+        portal_demo_quote_id = seed_portal_demo_quote(session, ref)
+        # FP-Growth runs HERE, at seed time, never in a request handler (§13)
+        affinity_rules = affinity.compute(session)
         session.commit()
 
         summary = {
@@ -395,7 +436,9 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
             "users": session.scalar(select(func.count()).select_from(User)),
             "discount_policies": len(POLICY),
             "historical_orders": orders,
+            "affinity_rules": affinity_rules,
             "demo_quote_id": demo_quote_id,
+            "portal_demo_quote_id": portal_demo_quote_id,
         }
     return summary
 

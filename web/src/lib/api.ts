@@ -128,3 +128,191 @@ export interface Policy {
   ceiling_pct: string;
   floor_margin_pct: string;
 }
+
+export interface Suggestion {
+  product_id: number;
+  sku: string;
+  name: string;
+  category: string;
+  score: number;
+  lift: number;
+  confidence: number;
+  is_promoted: boolean;
+  has_stock: boolean;
+  current_margin_pct: number;
+  projected_margin_pct: number;
+  margin_delta_if_added: number;
+  list_price: string;
+  because_of: string;
+}
+
+export interface SuggestionsOut {
+  quotation_id: number;
+  suggestions: Suggestion[];
+  considered: number;
+  dropped: string[];
+  tier: number;
+}
+
+export interface FulfillmentLine {
+  product_id: number;
+  product_name: string;
+  warehouse: string | null;
+  qty: number;
+  is_backorder: boolean;
+}
+
+export interface FulfillmentOut {
+  quotation_id: number;
+  plan: { id: number; total_cost: string; shipment_count: number } | null;
+  lines: FulfillmentLine[];
+}
+
+export interface InvoiceOut {
+  id: number;
+  kind: string;
+  total: string;
+  status: string;
+  period_key: string | null;
+  lines: { description: string; qty: number; unit_price: string; amount: string }[];
+  credit_notes: { amount: string; reason: string }[];
+  payments: { amount: string; method: string }[];
+}
+
+export interface InvoicesOut {
+  quotation_id: number;
+  invoices: InvoiceOut[];
+  subscription: {
+    id: number;
+    start_date: string;
+    next_bill_date: string;
+    status: string;
+  } | null;
+}
+
+export interface AmountDue {
+  billed: string;
+  credited: string;
+  amount_due: string;
+  paid: string;
+  outstanding: string;
+}
+
+export interface PortalQuoteSummary {
+  id: number;
+  state: string;
+  line_count: number;
+  net_total: string;
+}
+
+export interface PortalLine {
+  id: number;
+  product_name: string;
+  category: string;
+  qty: number;
+  unit_price: string;
+  discount_pct: string;
+  net_value: string;
+}
+
+export interface PortalQuoteDetail {
+  id: number;
+  customer_name: string;
+  state: string;
+  version: number;
+  lines: PortalLine[];
+  net_total: string;
+}
+
+export interface PortalMessage {
+  id: number;
+  author_name: string;
+  body: string;
+  quote_line_id: number | null;
+  counter_discount_pct: string | null;
+  created_at: string;
+}
+
+export interface DealHealthAssessment {
+  quotation_id: number;
+  customer_id: number;
+  customer_name: string;
+  customer_tier: string;
+  rep_id: number;
+  rep_name: string;
+  state: string;
+  version: number;
+  alert: boolean;
+  stalled: boolean;
+  discount_anomaly: boolean;
+  robust_z: number;
+  history_source: string;
+  delivery_slippage: boolean;
+  isolation_forest_outlier: boolean;
+  votes: number;
+  explanation: string[];
+  last_activity_at: string;
+  days_inactive: number;
+  discount_pct: number;
+}
+
+export interface RepPerformance {
+  rep_id: number;
+  rep_name: string;
+  quote_count: number;
+  total_net: string;
+  avg_discount_pct: number;
+}
+
+export interface CategoryBreakdown {
+  category: string;
+  units: number;
+  net_revenue: string;
+}
+
+export interface ReportingMetrics {
+  period: string;
+  total_quotes: number;
+  total_pipeline_value: string;
+  total_list_value: string;
+  total_discount_savings: string;
+  avg_discount_pct: number;
+  conversion_rate_pct: number;
+  status_distribution: Record<string, number>;
+  rep_performance: RepPerformance[];
+  category_breakdown: CategoryBreakdown[];
+}
+
+export interface ReliabilityStats {
+  total_invocations: number;
+  pass_rate_pct: number;
+  avg_latency_ms: number;
+  max_latency_ms: number;
+  invocations_by_agent: Record<string, number>;
+  verifier_verdicts: Record<string, number>;
+  latency_by_agent: Record<string, number>;
+}
+
+export interface DecisionLogRow {
+  id: number;
+  agent: string;
+  engine_version: string;
+  quotation_id: number | null;
+  input_hash: string;
+  input_json: any;
+  output_json: any;
+  verifier_verdict: string;
+  latency_ms: number;
+  created_at: string;
+}
+
+export interface ReplayResult {
+  log_id: number;
+  agent: string;
+  engine_version: string;
+  input_hash: string;
+  input_hash_matches: boolean;
+  output_matches: boolean;
+  reproduced: boolean;
+  replayed_output: any;
+}
