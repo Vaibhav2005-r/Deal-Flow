@@ -6,27 +6,56 @@
  * components; it never imports from src/internal.
  */
 
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { hasScope } from "@/lib/auth";
+import PortalLogin from "./PortalLogin";
+import QuoteList from "./QuoteList";
+import QuoteDetail from "./QuoteDetail";
 
 function RequirePortal({ children }: { children: JSX.Element }) {
   return hasScope("portal") ? children : <Navigate to="/portal/login" replace />;
 }
 
-const Placeholder = ({ name }: { name: string }) => (
-  <section>
-    <h2>{name}</h2>
-    <p>Phase 5 — the loop.</p>
-  </section>
-);
-
 export default function PortalRouter() {
+  const [, setAuthed] = useState(() => hasScope("portal"));
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleStorage = () => setAuthed(hasScope("portal"));
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   return (
-    <RequirePortal>
-      <Routes>
-        <Route index element={<Placeholder name="Your quotations" />} />
-        <Route path="quotes/:id" element={<Placeholder name="Review & counter" />} />
-      </Routes>
-    </RequirePortal>
+    <Routes>
+      <Route
+        path="login"
+        element={
+          <PortalLogin
+            onLogin={() => {
+              setAuthed(true);
+              navigate("/portal", { replace: true });
+            }}
+          />
+        }
+      />
+      <Route
+        path="quotes/:id"
+        element={
+          <RequirePortal>
+            <QuoteDetail />
+          </RequirePortal>
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <RequirePortal>
+            <QuoteList />
+          </RequirePortal>
+        }
+      />
+    </Routes>
   );
 }
