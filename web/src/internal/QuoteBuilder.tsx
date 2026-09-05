@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, type Customer, type Policy, type Product, type Quote, type Score } from "@/lib/api";
 import { ApprovalTrail, LineTable, RiskBadge, StateBadge } from "./components";
 
 export default function QuoteBuilder() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [policies, setPolicies] = useState<Policy[]>([]);
@@ -24,10 +28,26 @@ export default function QuoteBuilder() {
       setCustomers(c);
       setProducts(p);
       setPolicies(pol);
-      setCustomerId(c.find((x) => x.tier === "gold")?.id ?? c[0]?.id ?? null);
+      if (!id) {
+        setCustomerId(c.find((x) => x.tier === "gold")?.id ?? c[0]?.id ?? null);
+      }
       setProductId(p.find((x) => x.sku === "SV-INST-01")?.id ?? p[0]?.id ?? null);
     }).catch((e) => setError(String(e.message)));
-  }, []);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) {
+      setQuote(null);
+      setScore(null);
+      return;
+    }
+    run(async () => {
+      const q = await api.get<Quote>(`/api/quotes/${id}`);
+      setQuote(q);
+      setCustomerId(q.customer_id);
+      setScore(null);
+    });
+  }, [id]);
 
   const customer = customers.find((c) => c.id === customerId);
   const product = products.find((p) => p.id === productId);
@@ -46,8 +66,17 @@ export default function QuoteBuilder() {
   const createQuote = () =>
     run(async () => {
       const q = await api.post<Quote>("/api/quotes", { customer_id: customerId, lines: [] });
-      setQuote(q); setScore(null);
+      setQuote(q);
+      setScore(null);
+      navigate(`/quotes/${q.id}`);
     });
+
+  const startNew = () => {
+    setQuote(null);
+    setScore(null);
+    setError(null);
+    navigate("/");
+  };
 
   const addLine = () =>
     run(async () => {
@@ -55,6 +84,13 @@ export default function QuoteBuilder() {
       const q = await api.post<Quote>(`/api/quotes/${quote.id}/lines`, {
         product_id: productId, qty, discount_pct: discount,
       });
+      setQuote(q);
+    });
+
+  const removeLine = (lineId: number) =>
+    run(async () => {
+      if (!quote) return;
+      const q = await api.del<Quote>(`/api/quotes/${quote.id}/lines/${lineId}`);
       setQuote(q);
     });
 
@@ -66,10 +102,25 @@ export default function QuoteBuilder() {
       setQuote(await api.get<Quote>(`/api/quotes/${quote.id}`));
     });
 
+  const lastReturnedStep = quote?.approval_steps
+    ?.slice()
+    .reverse()
+    .find((s) => s.decision === "RETURNED");
+  const isRevisionNeeded = quote?.state === "DRAFT" && !!lastReturnedStep;
+
   return (
     <div className="space-y-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xl font-semibold text-slate-900">Quote builder</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-semibold text-slate-900">
+            {quote ? `Quotation #${quote.id}` : "New Quote"}
+          </h2>
+          {quote && (
+            <span className="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-medium">
+              v{quote.version}
+            </span>
+          )}
+        </div>
         {quote && (
           <div className="flex items-center gap-2">
             <StateBadge state={quote.state} />
@@ -77,6 +128,44 @@ export default function QuoteBuilder() {
           </div>
         )}
       </div>
+
+      {isRevisionNeeded && (
+        <div
+          className="bg-amber-50 border-l-4 border-amber-500 rounded-r-lg p-4 shadow-sm"
+          data-testid="revision-banner"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-amber-900 flex items-center gap-2">
+                <span>⚠️ Returned for Revision by {lastReturnedStep.approver_role.replaceAll("_", " ")}</span>
+              </h3>
+              {lastReturnedStep.reason && (
+                <p className="text-sm text-amber-800 mt-1.5 italic bg-amber-100/60 p-2 rounded">
+                  "{lastReturnedStep.reason}"
+                </p>
+              )}
+              <p className="text-xs text-amber-700 mt-2 font-medium">
+                You can remove lines, add replacement products, or adjust discounts below. Once revised, click <strong>Confirm &amp; score</strong> to re-submit into the approval chain.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quote && quote.state !== "DRAFT" && (
+        <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded-lg p-3 text-sm flex items-center justify-between">
+          <span>
+            This quotation is currently <strong>{quote.state.replaceAll("_", " ")}</strong>.
+          </span>
+          <span className="text-xs text-blue-700 font-medium">
+            {quote.state.startsWith("PENDING")
+              ? "Awaiting manager/finance review"
+              : quote.state === "READY_TO_FULFILL"
+              ? "Approved & ready for fulfillment"
+              : ""}
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-800 text-sm rounded px-3 py-2" data-testid="error">
@@ -101,17 +190,23 @@ export default function QuoteBuilder() {
             </select>
           </label>
           <button
-            onClick={createQuote}
+            onClick={quote ? startNew : createQuote}
             data-testid="new-quote"
-            className="bg-slate-900 text-white rounded px-3 py-1.5 text-sm font-medium"
+            className="bg-slate-900 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-slate-800 transition"
           >
-            {quote ? "Start another" : "New quote"}
+            {quote ? "Start another" : "Create quote"}
           </button>
-          {quote && <span className="text-sm text-slate-500">Quote #{quote.id} · v{quote.version}</span>}
+          <button
+            type="button"
+            onClick={() => navigate("/quotes")}
+            className="text-sm text-slate-500 hover:text-slate-900 underline ml-auto"
+          >
+            ← View all quotes
+          </button>
         </div>
       </section>
 
-      {quote && (
+      {quote && quote.state === "DRAFT" && (
         <section className="bg-white border border-slate-200 rounded-lg p-4">
           <h3 className="text-sm font-semibold text-slate-700 mb-3">Add a line</h3>
           <div className="flex flex-wrap items-end gap-3">
@@ -147,7 +242,7 @@ export default function QuoteBuilder() {
             <button
               onClick={addLine}
               data-testid="add-line"
-              className="bg-slate-700 text-white rounded px-3 py-1.5 text-sm font-medium"
+              className="bg-slate-700 text-white rounded px-3 py-1.5 text-sm font-medium hover:bg-slate-600 transition"
             >
               Add line
             </button>
@@ -163,21 +258,24 @@ export default function QuoteBuilder() {
 
       {quote && quote.lines.length > 0 && (
         <section className="bg-white border border-slate-200 rounded-lg p-4">
-          <LineTable lines={quote.lines} />
-          <div className="flex items-center justify-between mt-4">
+          <LineTable
+            lines={quote.lines}
+            onDelete={quote.state === "DRAFT" ? removeLine : undefined}
+          />
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
             <p className="text-sm text-slate-600">
               Net total{" "}
               <span className="font-semibold text-slate-900 tabular-nums">
-                {new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
+                ₹{new Intl.NumberFormat("en-IN").format(Number(quote.totals.net_total))}
               </span>
             </p>
             {quote.state === "DRAFT" && (
               <button
                 onClick={confirm}
                 data-testid="confirm"
-                className="bg-emerald-700 text-white rounded px-4 py-2 text-sm font-medium"
+                className="bg-emerald-700 text-white rounded px-4 py-2 text-sm font-medium hover:bg-emerald-600 transition"
               >
-                Confirm &amp; score
+                {isRevisionNeeded ? "Re-submit & score" : "Confirm & score"}
               </button>
             )}
           </div>

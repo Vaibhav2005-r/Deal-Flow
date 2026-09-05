@@ -54,6 +54,7 @@ export default function InternalRouter() {
         <Routes>
           <Route index element={<QuoteBuilder />} />
           <Route path="quotes" element={<QuoteList />} />
+          <Route path="quotes/:id" element={<QuoteBuilder />} />
           <Route path="approvals" element={<Approvals />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
