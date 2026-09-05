@@ -136,6 +136,7 @@ def build_sentinel_snapshot(
 
     return SentinelSnapshot(
         quotation_id=quotation.id,
+        quotation_state=str(quotation.state),
         as_of=today,
         last_activity_at=last_act,
         stall_days=7,

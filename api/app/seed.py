@@ -46,6 +46,9 @@ from app.models.tables import (
 from app.settings import settings
 
 SEED = 20260905
+
+#: Fixed "today" for seeded fixtures, so idle-day counts stay reproducible.
+AS_OF = date(2026, 9, 5)
 HISTORICAL_ORDERS = 200
 
 CATEGORIES = ["Hardware", "Software", "Service", "Subscription"]
@@ -352,6 +355,13 @@ def seed_demo_quote(session: Session, ref: dict) -> int:
         rep_id=rep.id,
         state=QuoteState.DRAFT,
         version=1,
+        # Set explicitly. Left to the column's server_default this is
+        # wall-clock now(), which makes `make seed` non-reproducible — and
+        # last_activity_at feeds the stalled detector, so it is not a
+        # cosmetic field.
+        last_activity_at=datetime.combine(
+            AS_OF, datetime.min.time(), tzinfo=timezone.utc
+        ),
     )
     session.add(quote)
     session.flush()
@@ -390,6 +400,11 @@ def seed_portal_demo_quote(session: Session, ref: dict) -> int:
         state=QuoteState.SENT,
         version=2,
         risk_score=Decimal("41.9"),
+        # Explicit, for the same reason as the other demo quote: the column's
+        # server_default is wall-clock now().
+        last_activity_at=datetime.combine(
+            AS_OF, datetime.min.time(), tzinfo=timezone.utc
+        ),
     )
     session.add(quote)
     session.flush()
@@ -410,6 +425,73 @@ def seed_portal_demo_quote(session: Session, ref: dict) -> int:
     return quote.id
 
 
+#: Deals deliberately left idle so the Deal Health dashboard has real signal.
+#: (state, days_idle, discount_pct, sku, label)
+STALLED_FIXTURES: list[tuple[str, int, str, str, str]] = [
+    (QuoteState.SENT, 12, "6", "HW-LT-16", "sent, gone quiet"),
+    (QuoteState.UNDER_NEGOTIATION, 21, "34", "HW-WS-01", "negotiating, deep discount"),
+    (QuoteState.PENDING_MANAGER, 9, "9", "SW-BI-01", "waiting on an approver"),
+]
+
+
+def seed_stalled_deals(session: Session, ref: dict, as_of: date) -> list[int]:
+    """A few OPEN deals that are genuinely idle.
+
+    The stalled detector ignores closed deals (a PAID order cannot stall), so
+    without these the dashboard is correctly but uselessly empty: every
+    historical order is PAID. These give it truthful content — deals that
+    really are waiting on someone.
+    """
+    reps = [u for u in ref["users"] if u.role == Role.REP]
+    by_sku = {p.sku: p for p in ref["products"]}
+    created: list[int] = []
+
+    for idx, (state, idle_days, discount, sku, _label) in enumerate(STALLED_FIXTURES):
+        customer = ref["customers"][idx % 10]      # never the two brand-new ones
+        rep = reps[idx % len(reps)]
+        product = by_sku[sku]
+        last_active = as_of - timedelta(days=idle_days)
+
+        quote = Quotation(
+            customer_id=customer.id,
+            rep_id=rep.id,
+            state=state,
+            version=1,
+            last_activity_at=datetime.combine(
+                last_active, datetime.min.time(), tzinfo=timezone.utc
+            ),
+        )
+        session.add(quote)
+        session.flush()
+
+        ceiling, floor = POLICY[(customer.tier, product.category)]
+        net = product.list_price * (Decimal(1) - Decimal(discount) / 100)
+        margin = (net - product.unit_cost) / net * 100 if net > 0 else Decimal(0)
+        session.add(QuoteLine(
+            quotation_id=quote.id,
+            product_id=product.id,
+            qty=2,
+            unit_price=product.list_price,
+            discount_pct=Decimal(discount),
+            ceiling_pct_applied=Decimal(ceiling),
+            margin_pct=round(margin, 2),
+            is_recurring=product.is_subscription,
+        ))
+
+        if state == QuoteState.PENDING_MANAGER:
+            session.add(ApprovalRequest(
+                quotation_id=quote.id,
+                step_index=0,
+                approver_role="SALES_MANAGER",
+                decision=ApprovalDecision.PENDING,
+            ))
+
+        created.append(quote.id)
+
+    session.flush()
+    return created
+
+
 def run(database_url: str | None = None, echo: bool = False) -> dict:
     """Drop and rebuild. Idempotent by construction."""
     url = database_url or settings.database_url
@@ -425,6 +507,7 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
         orders = seed_history(session, ref, rng)
         demo_quote_id = seed_demo_quote(session, ref)
         portal_demo_quote_id = seed_portal_demo_quote(session, ref)
+        stalled_ids = seed_stalled_deals(session, ref, AS_OF)
         # FP-Growth runs HERE, at seed time, never in a request handler (§13)
         affinity_rules = affinity.compute(session)
         session.commit()
@@ -439,6 +522,7 @@ def run(database_url: str | None = None, echo: bool = False) -> dict:
             "affinity_rules": affinity_rules,
             "demo_quote_id": demo_quote_id,
             "portal_demo_quote_id": portal_demo_quote_id,
+            "stalled_demo_deals": len(stalled_ids),
         }
     return summary
 

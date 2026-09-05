@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from app.domain.sentinel import MIN_HISTORY_FOR_REP, decide, effective_history, robust_z
 from app.domain.types import SentinelSnapshot
 
@@ -107,3 +109,82 @@ def test_sentinel_is_tier_1_and_writes_no_state():
     o = decide(_snap()).output
     assert o["tier"] == 1
     assert o["writes_state"] is False
+
+
+# --------------------------------------------------------------------------
+# closed deals cannot stall
+# --------------------------------------------------------------------------
+
+
+def _idle(state: str) -> SentinelSnapshot:
+    """A deal untouched for 243 days, in the given state."""
+    return SentinelSnapshot(
+        quotation_id=1,
+        quotation_state=state,
+        as_of=date(2026, 9, 5),
+        last_activity_at=date(2026, 1, 5),
+        stall_days=7,
+        discount_pct=9,
+        rep_discount_history=[float(h) for h in HISTORY],
+    )
+
+
+def test_a_paid_deal_never_stalls():
+    """REGRESSION. "Stalled" means someone still owes this deal an action.
+    A PAID deal is complete, so elapsed silence carries no signal.
+
+    Before this rule, every won deal in the history re-read as stalled
+    forever: 200 of 202 alerts on the Deal Health dashboard were PAID deals,
+    while the only two live deals went unflagged.
+    """
+    out = decide(_idle("PAID")).output
+    assert out["closed"] is True
+    assert out["stalled"] is False
+    assert out["alert"] is False
+    assert any("cannot stall" in line for line in decide(_idle("PAID")).explanation)
+
+
+@pytest.mark.parametrize(
+    "state",
+    ["DRAFT", "PENDING_MANAGER", "READY_TO_FULFILL", "SENT",
+     "UNDER_NEGOTIATION", "CONFIRMED", "FULFILLING"],
+)
+def test_open_deals_still_stall(state):
+    out = decide(_idle(state)).output
+    assert out["closed"] is False
+    assert out["stalled"] is True
+    assert out["alert"] is True, "stalled stands alone (§5.5)"
+
+
+def test_an_unpaid_invoice_still_stalls():
+    """The gate is deliberately narrow: INVOICED is NOT closed, because an
+    unpaid invoice is still awaiting an action."""
+    out = decide(_idle("INVOICED")).output
+    assert out["closed"] is False
+    assert out["stalled"] is True
+
+
+def test_an_unknown_state_is_treated_as_open():
+    """Fail safe: a caller that omits the state gets the un-gated behaviour
+    rather than a silent pass that hides real stalls."""
+    out = decide(_idle("")).output
+    assert out["closed"] is False
+    assert out["stalled"] is True
+
+
+def test_closing_a_deal_is_the_only_thing_that_changed():
+    """A closed deal still reports its other detectors honestly — we suppress
+    the stall, not the whole record."""
+    snap = _idle("PAID").model_copy(update={"discount_pct": 22.0})
+    out = decide(snap).output
+    assert out["stalled"] is False
+    assert out["discount_anomaly"] is True, "other detectors still run"
+
+
+def test_engine_version_was_bumped_for_the_rule_change():
+    """§4: bump engine_version on ANY rule change, so rows logged under the
+    old rule keep replaying against the old rule."""
+    from app.domain import sentinel
+
+    assert sentinel.ENGINE_VERSION == "sentinel/1.1.0"
+    assert sentinel.CLOSED_STATES == frozenset({"PAID"})

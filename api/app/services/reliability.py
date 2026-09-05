@@ -57,12 +57,21 @@ def get_reliability_stats(session: Session) -> dict[str, Any]:
 
     pass_count = verdict_counts.get("PASS", 0)
     fail_count = verdict_counts.get("FAIL", 0)
+    skipped_count = verdict_counts.get("SKIPPED", 0)
     evaluated = pass_count + fail_count
-    pass_rate = round(100.0 * pass_count / evaluated, 1) if evaluated > 0 else 100.0
+
+    # A pass rate is only meaningful over calls a verifier actually judged.
+    # Reporting 100% when NOTHING was verified reads as a perfect reliability
+    # score to anyone glancing at the panel — it is the one number on this
+    # screen that must never flatter us. `None` means "not yet measured", and
+    # the UI renders it as such rather than as success.
+    pass_rate = round(100.0 * pass_count / evaluated, 1) if evaluated > 0 else None
 
     return {
         "total_invocations": total_calls,
         "pass_rate_pct": pass_rate,
+        "verified_calls": evaluated,
+        "skipped_calls": skipped_count,
         "avg_latency_ms": round(float(avg_latency), 1),
         "max_latency_ms": int(max_latency),
         "invocations_by_agent": agent_counts,

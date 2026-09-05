@@ -284,8 +284,12 @@ export interface ReportingMetrics {
 }
 
 export interface ReliabilityStats {
+  /** null when no verifier has judged any call yet — render as "not measured",
+   *  never as success. See services/reliability.py. */
   total_invocations: number;
-  pass_rate_pct: number;
+  pass_rate_pct: number | null;
+  verified_calls: number;
+  skipped_calls: number;
   avg_latency_ms: number;
   max_latency_ms: number;
   invocations_by_agent: Record<string, number>;
