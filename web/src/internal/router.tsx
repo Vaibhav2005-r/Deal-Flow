@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
 import { api } from "@/lib/api";
 import { clearToken, getCurrentUser, getInternalRole, getRoleDesignation, hasScope, isFinanceUser, type InternalUserInfo } from "@/lib/auth";
+import { useMe } from "@/lib/capabilities";
 import Approvals from "./Approvals";
 import Catalog from "./Catalog";
 import Dashboard from "./Dashboard";
@@ -78,6 +79,17 @@ export default function InternalRouter() {
   const user = currentUserData || getCurrentUser();
   const roleName = user?.role ? String(user.role).toLowerCase() : getInternalRole();
   const isFinance = roleName.includes("finance") || isFinanceUser();
+
+  /**
+   * Navigation renders from the capabilities the SERVER grants (§3), not from
+   * a role name matched in the client. A rep and a manager differ by more than
+   * "is finance", and a UI that decides for itself which role sees which link
+   * drifts from what the API actually permits — invisibly, until someone
+   * clicks. `can` falls back to the old role check only while /api/me is still
+   * in flight, so the first paint is never wrong in the other direction.
+   */
+  const { can, me } = useMe("internal");
+  const ready = !!me;
   const designation = getRoleDesignation(roleName);
 
   const initials = (user?.full_name ?? "User")
@@ -137,20 +149,24 @@ export default function InternalRouter() {
             )}
 
             {/* 2. Quotations */}
-            <NavLink to="/quotes" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span>Quotations</span>
-            </NavLink>
+            {(ready ? can("view_quotes") : true) && (
+              <NavLink to="/quotes" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <span>Quotations</span>
+              </NavLink>
+            )}
 
             {/* 3. Approvals */}
-            <NavLink to="/approvals" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Approvals</span>
-            </NavLink>
+            {(ready ? can("view_approvals") : true) && (
+              <NavLink to="/approvals" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Approvals</span>
+              </NavLink>
+            )}
 
             {/* Non-Finance Only: Fulfillment */}
             {!isFinance && (
@@ -163,36 +179,44 @@ export default function InternalRouter() {
             )}
 
             {/* 4. Subscriptions */}
-            <NavLink to="/subscriptions" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Subscriptions</span>
-            </NavLink>
+            {(ready ? can("manage_subscriptions") : true) && (
+              <NavLink to="/subscriptions" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Subscriptions</span>
+              </NavLink>
+            )}
 
             {/* 5. Invoices */}
-            <NavLink to="/invoices" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-              </svg>
-              <span>Invoices</span>
-            </NavLink>
+            {(ready ? can("view_invoices") : true) && (
+              <NavLink to="/invoices" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+                </svg>
+                <span>Invoices</span>
+              </NavLink>
+            )}
 
             {/* 6. Deal Health */}
-            <NavLink to="/health" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span>Deal Health</span>
-            </NavLink>
+            {(ready ? can("view_deal_health") : true) && (
+              <NavLink to="/health" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>Deal Health</span>
+              </NavLink>
+            )}
 
             {/* 7. Reports */}
-            <NavLink to="/reports" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              <span>Reports</span>
-            </NavLink>
+            {(ready ? can("view_reports") : true) && (
+              <NavLink to="/reports" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span>Reports</span>
+              </NavLink>
+            )}
 
             {/* Non-Finance Only: Products/Catalog, Pipeline, Config */}
             {!isFinance && (
@@ -214,12 +238,14 @@ export default function InternalRouter() {
             )}
 
             {/* 8. Audit */}
-            <NavLink to="/reliability" className={tab}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-              <span>Audit</span>
-            </NavLink>
+            {(ready ? can("view_audit_log") : true) && (
+              <NavLink to="/reliability" className={tab}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span>Audit</span>
+              </NavLink>
+            )}
           </nav>
 
           {/* Right: Interactive User Profile & Actions */}
@@ -372,18 +398,18 @@ export default function InternalRouter() {
             </div>
             <div className="grid grid-cols-2 gap-1" onClick={() => setMobileNavOpen(false)}>
               <NavLink to="/" end className={tab}>Home</NavLink>
-              {!isFinance && <NavLink to="/build" className={tab}>Build Quote</NavLink>}
-              <NavLink to="/quotes" className={tab}>Quotations</NavLink>
-              <NavLink to="/approvals" className={tab}>Approvals</NavLink>
-              {!isFinance && <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>}
-              <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>
-              <NavLink to="/invoices" className={tab}>Invoices</NavLink>
-              <NavLink to="/health" className={tab}>Deal Health</NavLink>
-              <NavLink to="/reports" className={tab}>Reports</NavLink>
-              {!isFinance && <NavLink to="/catalog" className={tab}>Products</NavLink>}
-              {!isFinance && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
-              {!isFinance && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
-              <NavLink to="/reliability" className={tab}>Audit</NavLink>
+              {(ready ? can("build_quote") : !isFinance) && <NavLink to="/build" className={tab}>Build Quote</NavLink>}
+              {(ready ? can("view_quotes") : true) && <NavLink to="/quotes" className={tab}>Quotations</NavLink>}
+              {(ready ? can("view_approvals") : true) && <NavLink to="/approvals" className={tab}>Approvals</NavLink>}
+              {(ready ? can("view_fulfillment") : !isFinance) && <NavLink to="/fulfillment" className={tab}>Fulfillment</NavLink>}
+              {(ready ? can("manage_subscriptions") : true) && <NavLink to="/subscriptions" className={tab}>Subscriptions</NavLink>}
+              {(ready ? can("view_invoices") : true) && <NavLink to="/invoices" className={tab}>Invoices</NavLink>}
+              {(ready ? can("view_deal_health") : true) && <NavLink to="/health" className={tab}>Deal Health</NavLink>}
+              {(ready ? can("view_reports") : true) && <NavLink to="/reports" className={tab}>Reports</NavLink>}
+              {(ready ? can("manage_catalog") : !isFinance) && <NavLink to="/catalog" className={tab}>Products</NavLink>}
+              {(ready ? can("view_fulfillment") : !isFinance) && <NavLink to="/pipeline" className={tab}>Pipeline</NavLink>}
+              {(ready ? can("configure_discounts") : !isFinance) && <NavLink to="/discount-config" className={tab}>Config</NavLink>}
+              {(ready ? can("view_audit_log") : true) && <NavLink to="/reliability" className={tab}>Audit</NavLink>}
             </div>
           </div>
         )}

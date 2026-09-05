@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type DealHealthAssessment } from "@/lib/api";
 import { Pagination, StateBadge } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 export default function HealthDashboard() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [deals, setDeals] = useState<DealHealthAssessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +39,7 @@ export default function HealthDashboard() {
 
   useEffect(() => {
     loadHealth();
-  }, [page, pageSize, filterAlertsOnly]);
+  }, [page, pageSize, filterAlertsOnly, tick]);
 
   const totalDeals = totalCount || deals.length;
   const alertCount = deals.filter((d) => d.alert).length;

@@ -105,6 +105,8 @@ PRODUCTS: list[tuple[str, str, str, str, str]] = [
     ("SB-CLD-01", "Gridline Cloud Capacity Plan", "Subscription", "72000", "38000"),
 ]
 
+#: (name, tier, contact person, phone, billing address) -- the portal Profile
+#: tab reads these, so they are stored rather than invented in the UI.
 CUSTOMERS: list[tuple[str, Tier]] = [
     ("Northwind Logistics Pvt Ltd", Tier.GOLD),
     ("Harbourline Shipping", Tier.GOLD),
@@ -119,6 +121,34 @@ CUSTOMERS: list[tuple[str, Tier]] = [
     ("Ironhold Security Services", Tier.BRONZE),
     ("Castellan Financial Advisory", Tier.BRONZE),
 ]
+
+#: customer name -> (contact person, phone, billing address)
+CUSTOMER_CONTACTS: dict[str, tuple[str, str, str]] = {
+    "Northwind Logistics Pvt Ltd": ("Anita Deshpande", "+91 22 4188 2200",
+                                    "Unit 14, Sewri Industrial Estate, Mumbai 400015"),
+    "Harbourline Shipping": ("Marcus Vale", "+91 44 3377 1900",
+                             "Berth 7, Harbour Road, Chennai 600001"),
+    "Calder & Voss Associates": ("Rhea Calder", "+91 80 4455 8120",
+                                 "5th Floor, Prestige Atrium, Bengaluru 560001"),
+    "Peregrine Manufacturing": ("Sunil Bhatt", "+91 20 6611 4300",
+                                "Plot 22, Chakan MIDC, Pune 410501"),
+    "Ashgrove Healthcare Group": ("Dr. Leena Mathew", "+91 484 291 7700",
+                                  "Ashgrove Campus, Kakkanad, Kochi 682030"),
+    "Tessellate Design Studio": ("Ivan Roy", "+91 33 4008 5512",
+                                 "9B Camac Street, Kolkata 700016"),
+    "Brightwater Utilities": ("Nadia Qureshi", "+91 79 2755 6640",
+                              "Brightwater House, Ashram Road, Ahmedabad 380009"),
+    "Fenwick Retail Holdings": ("Tom Fenwick", "+91 124 488 9010",
+                                "Tower B, Cyber Hub, Gurugram 122002"),
+    "Marlow Civil Engineering": ("Priyanka Sen", "+91 33 2288 4471",
+                                 "Marlow Yard, Salt Lake Sector V, Kolkata 700091"),
+    "Quill & Sparrow Publishing": ("Edward Sparrow", "+91 11 4106 3388",
+                                   "22 Daryaganj, New Delhi 110002"),
+    "Ironhold Security Services": ("Vikram Rao", "+91 40 2355 9014",
+                                   "Ironhold House, Banjara Hills, Hyderabad 500034"),
+    "Castellan Financial Advisory": ("Meera Iyer", "+91 22 6720 1188",
+                                     "Level 9, BKC One, Mumbai 400051"),
+}
 
 WAREHOUSES: list[tuple[str, str, str]] = [
     # (code, name, unit_ship_cost) — costs match the §10.2 golden shape
@@ -212,11 +242,15 @@ def seed_reference(session: Session, rng: random.Random) -> dict:
         )
         session.add(portal_user)
         session.flush()
+        contact = CUSTOMER_CONTACTS.get(name)
         customers.append(
             Customer(
                 name=name,
                 tier=tier,
                 user_id=portal_user.id,
+                contact_name=contact[0] if contact else None,
+                contact_phone=contact[1] if contact else None,
+                billing_address=contact[2] if contact else None,
                 # the last two customers are brand new -> "new customer +3" (§5.1)
                 first_order_at=None if idx >= 10 else date(2025, 1, 1) + timedelta(days=idx * 37),
             )
@@ -669,7 +703,8 @@ def seed_operational_records(
                 Decimal(0),
             ).quantize(Decimal("0.01"))
 
-        issued_on = as_of - timedelta(days=30 + idx * 3)
+        # spread across ~8 months so the revenue trend has real periods
+        issued_on = as_of - timedelta(days=25 + idx * 17)
         subscription = None
         if recurring:
             subscription = Subscription(
@@ -699,6 +734,13 @@ def seed_operational_records(
                 kind=kind,
                 total=total_of(rows),
                 status=InvoiceStatus.PAID if paid else InvoiceStatus.ISSUED,
+                # Set explicitly. Left to the column default this is wall-clock
+                # now(), which both breaks seed reproducibility and collapses
+                # the revenue trend into a single bucket -- every invoice would
+                # appear to have been issued the moment the demo was seeded.
+                created_at=datetime.combine(
+                    issued_on, datetime.min.time(), tzinfo=timezone.utc
+                ),
             )
             session.add(invoice)
             session.flush()

@@ -60,6 +60,13 @@ class Customer(Entity):
     #: drives the "new customer +3" context point (§5.1)
     first_order_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    #: Contact details the portal Profile tab renders. Stored rather than
+    #: invented in the UI: a profile screen showing placeholder text is
+    #: indistinguishable from a broken one.
+    contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    billing_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class Product(Entity):
     __tablename__ = "product"

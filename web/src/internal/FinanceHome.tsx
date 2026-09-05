@@ -7,8 +7,10 @@ import {
   type Quote,
   type SubscriptionRow,
   type DealHealthAssessment,
+  type RevenueTrend,
 } from "@/lib/api";
 import { money, StateBadge } from "./components";
+import { useLiveData } from "@/lib/live";
 
 interface PeriodData {
   label: string;
@@ -16,34 +18,24 @@ interface PeriodData {
   prior: number;
 }
 
-const MONTHLY_DATA: PeriodData[] = [
-  { label: "Apr", revenue: 2850000, prior: 2400000 },
-  { label: "May", revenue: 3200000, prior: 2700000 },
-  { label: "Jun", revenue: 3600000, prior: 3100000 },
-  { label: "Jul", revenue: 4100000, prior: 3500000 },
-  { label: "Aug", revenue: 4500000, prior: 3900000 },
-  { label: "Sep", revenue: 4820000, prior: 4200000 },
-];
-
-const QUARTERLY_DATA: PeriodData[] = [
-  { label: "Q3 2025", revenue: 8400000, prior: 7200000 },
-  { label: "Q4 2025", revenue: 9600000, prior: 8100000 },
-  { label: "Q1 2026", revenue: 10800000, prior: 9200000 },
-  { label: "Q2 2026", revenue: 12400000, prior: 10400000 },
-];
-
-const YEARLY_DATA: PeriodData[] = [
-  { label: "2023", revenue: 28400000, prior: 22100000 },
-  { label: "2024", revenue: 36500000, prior: 28400000 },
-  { label: "2025", revenue: 44200000, prior: 36500000 },
-  { label: "2026 YTD", revenue: 48200000, prior: 41000000 },
-];
+/**
+ * Revenue comes from /api/reports/revenue-trend, computed over real invoice
+ * rows. This screen previously rendered three hardcoded series -- roughly
+ * 48M of "2026 YTD" revenue that existed nowhere in the database. A finance
+ * dashboard whose figures cannot be traced to a row is worse than no
+ * dashboard, so it now shows what the ledger says, including when that is a
+ * thinner story than an invented one.
+ */
 
 export default function FinanceHome() {
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
 
   const [period, setPeriod] = useState<"monthly" | "quarterly" | "yearly">("monthly");
+  const trend = useLiveData<RevenueTrend>(
+    () => api.get<RevenueTrend>(`/api/reports/revenue-trend?period=${period}`),
+    [period],
+  );
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
 
@@ -108,7 +100,11 @@ export default function FinanceHome() {
   const displayActiveSubs = activeSubs.length > 0 ? activeSubs.length : 128;
 
   // Chart datasets
-  const chartData = period === "monthly" ? MONTHLY_DATA : period === "quarterly" ? QUARTERLY_DATA : YEARLY_DATA;
+  const chartData: PeriodData[] = (trend.data?.series ?? []).map((s) => ({
+    label: s.label,
+    revenue: Number(s.revenue),
+    prior: Number(s.prior),
+  }));
   const maxVal = Math.max(...chartData.map((d) => Math.max(d.revenue, d.prior))) * 1.15;
 
   const formatLakhs = (val: number) => {

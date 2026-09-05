@@ -17,11 +17,16 @@ interface RoleOption {
   label: string;
 }
 
-const ROLES: RoleOption[] = [
-  { id: "rep", label: "Rep" },
-  { id: "manager", label: "Manager" },
-  { id: "finance", label: "Finance" },
-];
+/**
+ * Only the role self-service registration can actually grant.
+ *
+ * The form previously offered Manager and Finance. The server ignores a
+ * claimed role and creates a rep, so choosing "Manager" told the user
+ * something untrue -- and until this commit the /register endpoint DID honour
+ * it, which let anyone mint themselves an admin. Approver roles are granted by
+ * an existing admin, never at a public sign-up form.
+ */
+const ROLES: RoleOption[] = [{ id: "rep", label: "Sales Rep" }];
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
@@ -110,7 +115,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           JSON.stringify({
             ...res,
             email: res.email || cleanEmail,
-            role: res.role || selectedRole,
+            // the GRANTED role from the server, never the one requested
+            role: res.role,
           })
         );
         onLogin();
@@ -127,10 +133,25 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       const res = await api.post<{
         token: string;
         role: string;
+        scope?: string;
         full_name: string;
         user_id: number;
         email?: string;
       }>("/api/auth/login", { email: cleanEmail, password });
+
+      // One form, two audiences. The server derives the scope from the account,
+      // so a customer signs in here with their own credentials and lands in the
+      // portal -- rather than having to know a separate URL. The two scopes are
+      // stored under different keys and are never interchangeable.
+      if (res.scope === "portal" || res.role === "portal") {
+        setToken("portal", res.token);
+        localStorage.setItem(
+          "df360.portal.user",
+          JSON.stringify({ ...res, email: res.email || cleanEmail })
+        );
+        window.location.assign("/portal");
+        return;
+      }
 
       setToken("internal", res.token);
       localStorage.setItem(
@@ -138,7 +159,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         JSON.stringify({
           ...res,
           email: res.email || cleanEmail,
-          role: res.role || selectedRole,
+          // the GRANTED role from the server, never the one requested
+          role: res.role,
         })
       );
       onLogin();

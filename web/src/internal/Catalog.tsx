@@ -13,8 +13,11 @@ import {
   StatCard,
   money,
 } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 export default function Catalog() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [summary, setSummary] = useState<CatalogSummary | null>(null);
   const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [selected, setSelected] = useState<ProductDetailOut | null>(null);
@@ -61,7 +64,7 @@ export default function Catalog() {
     api.get<CatalogSummary>("/api/catalog/summary")
       .then(setSummary)
       .catch(() => {});
-  }, []);
+  }, [tick]);
 
   const load = useCallback(() => {
     const q = new URLSearchParams({

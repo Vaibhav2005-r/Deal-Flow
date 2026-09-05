@@ -3,30 +3,20 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { api } from "@/lib/api";
 import { setToken } from "@/lib/auth";
 
-const DEMO_PORTAL_USERS = [
-  {
-    email: "portal1@northwind.example",
-    password: "Northwind Logistics Pvt Ltd",
-    label: "Northwind Logistics (Gold Tier)",
-  },
-  {
-    email: "portal2@harbourline.example",
-    password: "Harbourline Shipping",
-    label: "Harbourline Shipping (Gold Tier)",
-  },
-  {
-    email: "portal3@calder.example",
-    password: "Calder & Voss Associates",
-    label: "Calder & Voss Associates (Gold Tier)",
-  },
-];
+/**
+ * No pre-filled credentials.
+ *
+ * This list held real customer logins in plain text, rendered into the page.
+ * Customers sign in with their own credentials, the same as anywhere else --
+ * and the main sign-in form now routes portal accounts here automatically, so
+ * a shortcut list is not needed to reach this screen.
+ */
 
 interface PortalLoginProps {
   onLogin: () => void;
 }
 
 export default function PortalLogin({ onLogin }: PortalLoginProps) {
-  const [selectedDemo, setSelectedDemo] = useState<number | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,11 +24,6 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
 
   const shouldReduceMotion = useReducedMotion();
 
-  function handleSelectDemo(index: number) {
-    setSelectedDemo(index);
-    setEmail(DEMO_PORTAL_USERS[index].email);
-    setPassword(DEMO_PORTAL_USERS[index].password);
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,27 +76,7 @@ export default function PortalLogin({ onLogin }: PortalLoginProps) {
           Sign in to review quotations, propose counter-discounts, and confirm terms.
         </p>
 
-        <div className="mb-5">
-          <label className="block text-xs font-semibold text-slate-600 mb-1">
-            Quick Select Demo Customer
-          </label>
-          <select
-            value={selectedDemo ?? ""}
-            onChange={(e) => {
-              if (e.target.value !== "") {
-                handleSelectDemo(Number(e.target.value));
-              }
-            }}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-slate-50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 transition-colors"
-          >
-            <option value="" disabled>Select customer...</option>
-            {DEMO_PORTAL_USERS.map((d, i) => (
-              <option key={d.email} value={i}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        
 
         <form onSubmit={submit} className="space-y-4">
           <div>

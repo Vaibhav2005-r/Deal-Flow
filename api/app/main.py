@@ -16,6 +16,7 @@ from app.api import (
     auth,
     catalog,
     fulfillment,
+    me,
     operations,
     portal,
     quotes,
@@ -54,6 +55,7 @@ app.include_router(quotes.router)
 app.include_router(approvals.router)
 app.include_router(fulfillment.router)
 app.include_router(operations.router)
+app.include_router(me.router)
 app.include_router(catalog.router)
 app.include_router(admin.router)
 app.include_router(portal.router)

@@ -106,14 +106,17 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     if not name:
         name = clean_email.split("@")[0].replace(".", " ").title()
 
-    role_str = (body.role or "rep").strip().lower()
-    try:
-        role_enum = Role(role_str)
-    except ValueError:
-        role_enum = Role.REP
-
-    if role_enum not in {Role.REP, Role.MANAGER, Role.FINANCE, Role.ADMIN}:
-        role_enum = Role.REP
+    # SECURITY: the role in the request body is deliberately ignored.
+    #
+    # This endpoint is public. Honouring a claimed role let anyone POST
+    # {"role": "admin"} and receive every capability in the system -- approve
+    # their own over-ceiling quotes, rewrite the discount policy, record
+    # payments, manage the catalog. That defeats the approval chain, which is
+    # the point of the product.
+    #
+    # A self-service account is always a rep. Approver and admin roles are
+    # granted by an existing admin, never claimed at a sign-up form.
+    role_enum = Role.REP
 
     user = User(
         email=clean_email,

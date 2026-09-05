@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { api, type PortalLine, type PortalMessage, type PortalQuoteDetail } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
 
   const [quote, setQuote] = useState<PortalQuoteDetail | null>(null);
   const [messages, setMessages] = useState<PortalMessage[]>([]);
@@ -14,7 +12,8 @@ export default function QuoteDetail() {
   const [success, setSuccess] = useState<string | null>(null);
 
   // Active top navigation tab: 'quotation' | 'messages' | 'profile'
-  const [activeTab, setActiveTab] = useState<"quotation" | "messages" | "profile">("quotation");
+  // tabs are now the portal shell's; this screen only renders the quotation
+  const [activeTab] = useState<"quotation" | "messages" | "profile">("quotation");
 
   // Negotiation Form state (Screen 11 wireframe)
   const [lineComments, setLineComments] = useState<Record<number, string>>({});
@@ -34,12 +33,6 @@ export default function QuoteDetail() {
       return null;
     }
   })();
-
-  function handleLogout() {
-    clearToken("portal");
-    localStorage.removeItem("df360.portal.user");
-    navigate("/portal/login", { replace: true });
-  }
 
   async function loadData() {
     if (!id) return;
@@ -203,85 +196,7 @@ export default function QuoteDetail() {
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100 font-sans">
       {/* Top Navigation Bar with DealFlow360 and Tabs matching Wireframe */}
-      <header className="bg-[#1d4ed8] border-b border-blue-600 px-6 py-3 shadow-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link
-              to="/portal"
-              className="text-white font-extrabold text-lg tracking-tight hover:opacity-90 flex items-center gap-2"
-            >
-              <div className="w-8 h-8 rounded bg-white text-[#1d4ed8] font-black flex items-center justify-center text-sm shadow-sm">
-                DF
-              </div>
-              DealFlow360
-            </Link>
-
-            {/* Navigation Tabs */}
-            <nav className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab("quotation")}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  activeTab === "quotation"
-                    ? "bg-slate-950 text-white shadow-inner"
-                    : "bg-blue-600/60 text-blue-100 hover:bg-blue-600 hover:text-white"
-                }`}
-              >
-                My Quotation
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("messages")}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                  activeTab === "messages"
-                    ? "bg-slate-950 text-white shadow-inner"
-                    : "bg-blue-600/60 text-blue-100 hover:bg-blue-600 hover:text-white"
-                }`}
-              >
-                Messages
-                {messages.length > 0 && (
-                  <span className="bg-amber-400 text-slate-950 px-1.5 py-0.2 text-[10px] font-bold rounded-full">
-                    {messages.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab("profile")}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  activeTab === "profile"
-                    ? "bg-slate-950 text-white shadow-inner"
-                    : "bg-blue-600/60 text-blue-100 hover:bg-blue-600 hover:text-white"
-                }`}
-              >
-                Profile
-              </button>
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <Link
-              to="/portal"
-              className="text-xs font-medium text-blue-200 hover:text-white transition-colors"
-            >
-              ← All Quotes
-            </Link>
-            <div className="h-4 w-px bg-blue-400/40" />
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-white">{user?.full_name ?? quote?.customer_name ?? "Customer"}</p>
-              <p className="text-[11px] text-blue-200">{quote?.customer_name}</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-white bg-blue-800 hover:bg-blue-900 border border-blue-400/30 px-3 py-1 rounded font-medium transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* chrome lives in PortalShell — one header, one place */}
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         {error && (

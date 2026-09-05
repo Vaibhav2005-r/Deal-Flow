@@ -1,19 +1,20 @@
-import { useEffect, useState } from "react";
+
 import { Link } from "react-router-dom";
 import { api, type DashboardOut } from "@/lib/api";
 import { ErrorBanner, PageHeader, StatCard, StateBadge } from "./components";
+import { useLiveData } from "@/lib/live";
 
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardOut | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Live: approvals land, deals stall and invoices are paid while this screen
+  // is open. A fetch on mount alone leaves the landing page quietly stale.
+  const { data, error, initialLoading, lastUpdated } = useLiveData<DashboardOut>(
+    () => api.get<DashboardOut>("/api/dashboard"),
+  );
 
-  useEffect(() => {
-    api.get<DashboardOut>("/api/dashboard")
-      .then(setData)
-      .catch((e) => setError(String(e.message)));
-  }, []);
-
-  if (error) return <ErrorBanner error={error} />;
+  // Keep the last good data on screen if a refresh fails — blanking a working
+  // dashboard because one poll errored is worse than showing slightly old rows.
+  if (error && !data) return <ErrorBanner error={error} />;
+  if (initialLoading && !data) return <p className="text-sm text-slate-400">Loading…</p>;
   if (!data) {
     return (
       <div className="py-20 text-center text-xs text-slate-400 font-medium">
@@ -29,7 +30,10 @@ export default function Dashboard() {
     <div className="space-y-6">
       <PageHeader
         title={`Welcome back, ${data.full_name.split(" ")[0]}`}
-        subtitle="Operational overview: pipeline movement, pending approvals, and deal risks."
+        subtitle={
+          "Operational overview: pipeline movement, pending approvals, and deal risks." +
+          (lastUpdated ? ` · live, updated ${lastUpdated.toLocaleTimeString()}` : "")
+        }
         actions={
           <div className="flex items-center gap-2.5">
             <Link

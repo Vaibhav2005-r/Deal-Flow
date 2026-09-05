@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { api, type Quote } from "@/lib/api";
 import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, money } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 interface ColumnDef {
   key: string;
@@ -27,6 +28,8 @@ const COLUMNS: ColumnDef[] = [
 ];
 
 export default function QuoteList() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const shouldReduceMotion = useReducedMotion();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +58,7 @@ export default function QuoteList() {
       })
       .catch(() => setQuotes([]))
       .finally(() => setLoading(false));
-  }, [allQuotes, page, pageSize]);
+  }, [allQuotes, page, pageSize, tick]);
 
   // Filtered & Sorted quotes
   const filteredQuotes = useMemo(() => {

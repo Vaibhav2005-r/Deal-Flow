@@ -56,9 +56,12 @@ def client(seeded_db) -> TestClient:
     app.dependency_overrides.clear()
 
 
-def login(client: TestClient, email: str) -> dict:
-    """Seeded users all share the demo password scheme keyed on their email."""
-    res = client.post("/api/auth/login", json={"email": email, "password": email})
+def login(client: TestClient, email: str, password: str | None = None) -> dict:
+    """Seeded internal users use their email as the password; portal users use
+    their customer name, so that one is passed explicitly."""
+    res = client.post(
+        "/api/auth/login", json={"email": email, "password": password or email}
+    )
     assert res.status_code == 200, res.text
     return res.json()
 

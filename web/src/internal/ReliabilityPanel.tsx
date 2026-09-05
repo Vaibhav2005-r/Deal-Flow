@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { api, type DecisionLogRow, type ReliabilityStats, type ReplayResult } from "@/lib/api";
 import { Pagination } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 export default function ReliabilityPanel() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [stats, setStats] = useState<ReliabilityStats | null>(null);
   const [logs, setLogs] = useState<DecisionLogRow[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string>("");
@@ -22,7 +25,7 @@ export default function ReliabilityPanel() {
     api.get<ReliabilityStats>("/api/reliability/stats")
       .then(setStats)
       .catch(() => {});
-  }, []);
+  }, [tick]);
 
   async function loadLogs() {
     setLoading(true);

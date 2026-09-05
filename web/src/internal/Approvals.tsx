@@ -12,6 +12,7 @@ import {
   StateBadge,
   money,
 } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 const FILTERS = [
   { key: "pending", label: "Pending Approval" },
@@ -20,6 +21,8 @@ const FILTERS = [
 ];
 
 export default function Approvals() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [queue, setQueue] = useState<Quote[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
@@ -40,7 +43,7 @@ export default function Approvals() {
       .catch((e) => setError(String(e.message)));
   }, [filter, page, pageSize]);
 
-  useEffect(load, [load]);
+  useEffect(load, [load, tick]);
 
   async function decide(id: number, action: "approve" | "reject" | "return") {
     setError(null);

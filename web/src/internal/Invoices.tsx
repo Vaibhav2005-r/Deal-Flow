@@ -9,6 +9,7 @@ import {
   StatCard,
   money,
 } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 const FILTERS = [
   { key: "all", label: "All Invoices" },
@@ -17,6 +18,8 @@ const FILTERS = [
 ];
 
 export default function Invoices() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [rows, setRows] = useState<InvoiceRow[]>([]);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -37,7 +40,7 @@ export default function Invoices() {
     api.get<InvoiceSummary>(`/api/invoices/summary${q.toString() ? `?${q.toString()}` : ""}`)
       .then(setSummary)
       .catch(() => {});
-  }, [filter, search]);
+  }, [filter, search, tick]);
 
   // Fetch paginated invoices list from the database
   useEffect(() => {
@@ -56,7 +59,7 @@ export default function Invoices() {
       })
       .catch((e) => setError(String(e.message)))
       .finally(() => setLoading(false));
-  }, [filter, search, page, pageSize]);
+  }, [filter, search, page, pageSize, tick]);
 
   function open(id: number) {
     setError(null);

@@ -12,6 +12,7 @@ import {
 import { StateBadge } from "./components";
 
 import { money } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 
 
@@ -21,6 +22,8 @@ import { money } from "./components";
  * so an illegal move surfaces as an error rather than being hidden in the UI.
  */
 export default function Pipeline() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [searchParams, setSearchParams] = useSearchParams();
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -38,7 +41,9 @@ export default function Pipeline() {
   const loadQuotes = useCallback(() => {
     api.get<Quote[]>("/api/quotes?all_quotes=true&page_size=200").then(setQuotes).catch(() => setQuotes([]));
   }, []);
-  useEffect(loadQuotes, [loadQuotes]);
+  useEffect(loadQuotes, [loadQuotes, tick]);
+  // the selected quote moves too — approvals, shipments, payments
+  useEffect(() => { if (selected) loadDetail(selected); }, [tick]);
 
   const loadDetail = useCallback((id: number) => {
     Promise.all([

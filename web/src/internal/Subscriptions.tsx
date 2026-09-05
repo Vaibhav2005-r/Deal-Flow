@@ -9,6 +9,7 @@ import {
   StatCard,
   money,
 } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 const FILTERS = [
   { key: "all", label: "All Plans" },
@@ -18,6 +19,8 @@ const FILTERS = [
 ];
 
 export default function Subscriptions() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +42,7 @@ export default function Subscriptions() {
         setTotalPages(res.totalPages);
       })
       .catch((e) => setError(String(e.message)));
-  }, [filter, page, pageSize]);
+  }, [filter, page, pageSize, tick]);
 
   const mrr = rows
     .filter((r) => r.status === "active")

@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PendingOrder, type StockRow } from "@/lib/api";
 import { EmptyRow, ErrorBanner, PageHeader, Pagination, StatCard, StateBadge } from "./components";
+import { useAutoRefresh } from "@/lib/live";
 
 /** Screen 7 — Fulfillment and Stock. Live stock per warehouse, plus every
  *  order still waiting to ship. */
 export default function FulfillmentList() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [stock, setStock] = useState<StockRow[]>([]);
   const [pending, setPending] = useState<PendingOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +20,7 @@ export default function FulfillmentList() {
     api.get<Array<{ code: string }>>("/api/warehouses")
       .then((whs) => setWarehouseList(whs.map((w) => w.code)))
       .catch(() => {});
-  }, []);
+  }, [tick]);
 
   // Pagination for Pending Orders
   const [pendingPage, setPendingPage] = useState(1);
@@ -39,7 +42,7 @@ export default function FulfillmentList() {
         setPendingTotalPages(res.totalPages);
       })
       .catch((e) => setError(String(e.message)));
-  }, [pendingPage, pendingPageSize]);
+  }, [pendingPage, pendingPageSize, tick]);
 
   useEffect(() => {
     const q = new URLSearchParams({
@@ -55,7 +58,7 @@ export default function FulfillmentList() {
         setStockTotalPages(res.totalPages);
       })
       .catch((e) => setError(String(e.message)));
-  }, [stockPage, stockPageSize, warehouse, lowOnly]);
+  }, [stockPage, stockPageSize, warehouse, lowOnly, tick]);
 
   const warehouses = useMemo(
     () => (warehouseList.length > 0

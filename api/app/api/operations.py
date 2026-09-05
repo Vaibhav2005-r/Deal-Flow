@@ -549,3 +549,64 @@ def invoice_detail(
     ]
     row["quotation_state"] = str(quote.state) if quote else None
     return row
+
+
+# --------------------------------------------------------------------------
+# revenue trend  (replaces a hardcoded series in the Finance home screen)
+# --------------------------------------------------------------------------
+
+
+@router.get("/reports/revenue-trend")
+def revenue_trend(
+    period: str = Query("monthly", pattern="^(monthly|quarterly|yearly)$"),
+    session: Session = Depends(get_session),
+    _user: User = Depends(current_internal_user),
+) -> dict:
+    """Realised revenue per period, with the prior period alongside.
+
+    Computed from issued invoices. The Finance home screen previously rendered
+    an invented series -- ~48M of "2026 YTD" revenue that existed nowhere in
+    the database. A finance dashboard whose numbers cannot be traced to a row
+    is worse than no dashboard, so this returns what the ledger actually says
+    even when that is a thinner story.
+    """
+    rows = session.execute(
+        select(Invoice.total, Invoice.created_at).order_by(Invoice.created_at)
+    ).all()
+
+    def bucket(when) -> str:
+        if period == "monthly":
+            return when.strftime("%Y-%m")
+        if period == "quarterly":
+            return f"{when.year}-Q{(when.month - 1) // 3 + 1}"
+        return str(when.year)
+
+    totals: dict[str, Decimal] = {}
+    counts: dict[str, int] = {}
+    for total, created in rows:
+        if created is None:
+            continue
+        key = bucket(created)
+        totals[key] = totals.get(key, Decimal(0)) + total
+        counts[key] = counts.get(key, 0) + 1
+
+    ordered = sorted(totals)
+    series = []
+    for idx, key in enumerate(ordered):
+        prior = totals[ordered[idx - 1]] if idx else Decimal(0)
+        series.append({
+            "label": key,
+            "revenue": str(totals[key].quantize(Decimal("0.01"))),
+            "prior": str(prior.quantize(Decimal("0.01"))),
+            "invoice_count": counts[key],
+        })
+
+    return {
+        "period": period,
+        "series": series,
+        "total": str(sum(totals.values(), Decimal(0)).quantize(Decimal("0.01"))),
+        "invoices": len(rows),
+        #: True when the ledger holds nothing for this period. The UI says so
+        #: rather than drawing an empty chart that looks like a failure.
+        "empty": not series,
+    }

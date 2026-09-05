@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { api, type PortalQuoteSummary } from "@/lib/api";
-import { clearToken } from "@/lib/auth";
 
 export default function QuoteList() {
   const [quotes, setQuotes] = useState<PortalQuoteSummary[]>([]);
@@ -11,22 +10,8 @@ export default function QuoteList() {
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const navigate = useNavigate();
 
-  const user = (() => {
-    try {
-      const raw = localStorage.getItem("df360.portal.user");
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  })();
-
-  function handleLogout() {
-    clearToken("portal");
-    localStorage.removeItem("df360.portal.user");
-    navigate("/portal/login", { replace: true });
-  }
+  // the signed-in customer's name is rendered by PortalShell
 
   async function loadQuotes() {
     setLoading(true);
@@ -79,42 +64,7 @@ export default function QuoteList() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-[#1d4ed8] border-b border-blue-600 px-6 py-3 shadow-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link
-              to="/portal"
-              className="text-white font-extrabold text-lg tracking-tight hover:opacity-90 flex items-center gap-2"
-            >
-              <div className="w-8 h-8 rounded bg-white text-[#1d4ed8] font-black flex items-center justify-center text-sm shadow-sm">
-                DF
-              </div>
-              DealFlow360
-            </Link>
-
-            <nav className="flex items-center gap-2">
-              <span className="px-4 py-1.5 rounded-full text-xs font-semibold bg-slate-950 text-white shadow-inner">
-                My Quotations
-              </span>
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-white">
-                {user?.full_name ?? "Portal Contact"}
-              </p>
-              <p className="text-[11px] text-blue-200">Customer Account</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-white bg-blue-800 hover:bg-blue-900 border border-blue-400/30 px-3 py-1 rounded font-medium transition-colors"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* chrome lives in PortalShell — one header, one place */}
 
       <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">

@@ -572,3 +572,45 @@ export interface PriceListRef {
   name: string;
   currency: string;
 }
+
+/** Revenue actually recognised, per period, from invoice rows. */
+export interface RevenueTrend {
+  period: "monthly" | "quarterly" | "yearly";
+  series: { label: string; revenue: string; prior: string; invoice_count: number }[];
+  total: string;
+  invoices: number;
+  /** the ledger holds nothing for this period — say so rather than draw an
+   *  empty chart that reads as a failure */
+  empty: boolean;
+}
+
+// ------------------------------------------------------------ customer portal
+export interface PortalProfile {
+  customer_id: number;
+  name: string;
+  tier: string;
+  contact_name: string | null;
+  contact_email: string;
+  contact_phone: string | null;
+  billing_address: string | null;
+  customer_since: string | null;
+  totals: {
+    quotations: number;
+    open_quotations: number;
+    invoices: number;
+    outstanding: string;
+  };
+}
+
+/** Cross-quotation message row for the portal Messages tab. Distinct from
+ *  PortalMessage above, which is one row inside a single thread. */
+export interface PortalMessageSummary {
+  id: number;
+  quotation_id: number;
+  body: string;
+  counter_discount_pct: string | null;
+  line_label: string | null;
+  author_name: string | null;
+  from_customer: boolean;
+  created_at: string | null;
+}

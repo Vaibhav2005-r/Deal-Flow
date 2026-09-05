@@ -40,7 +40,13 @@ def test_registration_and_login_flow(client: TestClient):
     })
     assert reg_res.status_code == 201
     data = reg_res.json()
-    assert data["role"] == "manager"
+    # EXPECTATION CHANGED, deliberately. This previously asserted that a public
+    # registration claiming "manager" was granted it. That was the behaviour of
+    # a privilege-escalation hole: anyone could POST {"role": "admin"} to this
+    # endpoint and receive every capability -- approve their own over-ceiling
+    # quotes, rewrite the discount policy, record payments. Self-service accounts
+    # are now always a rep; approver roles are granted by an existing admin.
+    assert data["role"] == "rep"
     assert data["full_name"] == "Marcus Vance"
     assert "token" in data
 
@@ -51,7 +57,7 @@ def test_registration_and_login_flow(client: TestClient):
     })
     assert login_res.status_code == 200
     login_data = login_res.json()
-    assert login_data["role"] == "manager"
+    assert login_data["role"] == "rep"
     assert login_data["full_name"] == "Marcus Vance"
     assert login_data["scope"] == "internal"
 
@@ -69,7 +75,13 @@ def test_finance_signup_and_duplicate_error(client: TestClient):
     })
     assert res.status_code == 201
     body = res.json()
-    assert body["role"] == "finance"
+    # EXPECTATION CHANGED, deliberately. This previously asserted that a public
+    # registration claiming "finance" was granted it. That was the behaviour of
+    # a privilege-escalation hole: anyone could POST {"role": "admin"} to this
+    # endpoint and receive every capability -- approve their own over-ceiling
+    # quotes, rewrite the discount policy, record payments. Self-service accounts
+    # are now always a rep; approver roles are granted by an existing admin.
+    assert body["role"] == "rep"
     assert body["full_name"] == "Test Finance User"
     assert body["scope"] == "internal"
     assert "token" in body

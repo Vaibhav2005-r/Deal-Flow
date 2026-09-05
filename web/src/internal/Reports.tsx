@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { api, type ReportingMetrics } from "@/lib/api";
+import { useAutoRefresh } from "@/lib/live";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 export default function Reports() {
+  // re-fetch on an interval and on tab focus, so the view tracks the database
+  const tick = useAutoRefresh();
   const [period, setPeriod] = useState("all");
   const [selectedRep, setSelectedRep] = useState<string>("");
   const [selectedState, setSelectedState] = useState<string>("ALL");
@@ -34,7 +37,7 @@ export default function Reports() {
 
   useEffect(() => {
     loadMetrics();
-  }, [period, selectedRep, selectedState, selectedCategory]);
+  }, [period, selectedRep, selectedState, selectedCategory, tick]);
 
   function formatMoney(val: string | number) {
     const n = Number(val);

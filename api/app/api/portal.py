@@ -21,6 +21,7 @@ from app.api.deps import current_portal_user, get_session
 from app.models.enums import QuoteState
 from app.models.tables import (
     Customer,
+    Invoice,
     PortalMessage,
     Product,
     Quotation,
@@ -319,3 +320,98 @@ def portal_confirm(
     quote = _load_owned(session, quote_id, customer)
     state = fire(session, quote, Event.CUSTOMER_CONFIRM, actor_id=user.id)
     return {"quotation_id": quote.id, "state": str(state)}
+
+
+# --------------------------------------------------------------------------
+# profile and message centre  (product flow screen 11: My Quotation | Messages
+# | Profile)
+# --------------------------------------------------------------------------
+
+
+@router.get("/profile")
+def portal_profile(
+    session: Session = Depends(get_session),
+    user: User = Depends(current_portal_user),
+) -> dict:
+    """The customer's own account details, read from the database.
+
+    Everything here is a stored value. A profile screen padded with invented
+    placeholders is indistinguishable from a broken one, so a field with no
+    value is returned as null and the UI says it is not on file.
+    """
+    customer = _customer_for_user(session, user)
+
+    quotes = session.scalars(
+        select(Quotation).where(Quotation.customer_id == customer.id)
+    ).all()
+    invoices = session.scalars(
+        select(Invoice)
+        .join(Quotation, Invoice.quotation_id == Quotation.id)
+        .where(Quotation.customer_id == customer.id)
+    ).all()
+    outstanding = sum(
+        (i.total for i in invoices if str(i.status) != "paid"), Decimal(0)
+    )
+
+    return {
+        "customer_id": customer.id,
+        "name": customer.name,
+        "tier": str(customer.tier),
+        "contact_name": customer.contact_name,
+        "contact_email": user.email,
+        "contact_phone": customer.contact_phone,
+        "billing_address": customer.billing_address,
+        "customer_since": (
+            str(customer.first_order_at) if customer.first_order_at else None
+        ),
+        "totals": {
+            "quotations": len(quotes),
+            "open_quotations": len(
+                [q for q in quotes if str(q.state) in {str(s) for s in PORTAL_VISIBLE}]
+            ),
+            "invoices": len(invoices),
+            "outstanding": str(outstanding.quantize(Decimal("0.01"))),
+        },
+    }
+
+
+@router.get("/messages")
+def portal_message_centre(
+    session: Session = Depends(get_session),
+    user: User = Depends(current_portal_user),
+) -> list[dict]:
+    """Every message on this customer's quotations, newest first.
+
+    The per-quote thread already exists; this is the cross-quote view the
+    Messages tab needs, so a customer does not have to open each quotation to
+    find out whether anyone replied.
+    """
+    customer = _customer_for_user(session, user)
+
+    rows = session.scalars(
+        select(PortalMessage)
+        .join(Quotation, PortalMessage.quotation_id == Quotation.id)
+        .where(Quotation.customer_id == customer.id)
+        .order_by(PortalMessage.id.desc())
+    ).all()
+
+    out = []
+    for m in rows:
+        author = session.get(User, m.author_id)
+        line = session.get(QuoteLine, m.quote_line_id) if m.quote_line_id else None
+        product = session.get(Product, line.product_id) if line else None
+        out.append({
+            "id": m.id,
+            "quotation_id": m.quotation_id,
+            "body": m.body,
+            "counter_discount_pct": (
+                str(m.counter_discount_pct)
+                if m.counter_discount_pct is not None else None
+            ),
+            "line_label": product.name if product else None,
+            "author_name": author.full_name if author else None,
+            # a customer needs to know which side spoke last
+            "from_customer": bool(author and str(author.role) == "portal"),
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        })
+    return out
