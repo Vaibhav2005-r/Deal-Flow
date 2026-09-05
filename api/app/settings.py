@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "mysql+pymysql://dealflow:dealflow@localhost:3306/dealflow"
+    database_url: str = "mysql+pymysql://root:Vaibhav%408113@localhost:3306/dealflow"
     api_title: str = "DealFlow360"
     api_version: str = "0.1.0"
 

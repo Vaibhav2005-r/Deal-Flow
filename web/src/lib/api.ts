@@ -482,6 +482,16 @@ export interface InvoiceDetailOut extends InvoiceRow {
   quotation_state: string | null;
 }
 
+export interface InvoiceSummary {
+  total_invoices: number;
+  paid_invoices: number;
+  unpaid_invoices: number;
+  total_billed: string;
+  total_paid: string;
+  total_credited: string;
+  total_outstanding: string;
+}
+
 // ----------------------------------------------------------- screens 16/17
 export interface CatalogSummary {
   total_products: number;
