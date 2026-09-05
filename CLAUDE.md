@@ -36,7 +36,7 @@ not UI polish.
 | API | FastAPI + Pydantic v2 | |
 | ORM | SQLAlchemy 2.0 (declarative, typed) | |
 | Migrations | Alembic | |
-| DB | PostgreSQL 16 | |
+| DB | MySQL 8.4 | migrated from PostgreSQL 16; see §6 note on the append-only trigger |
 | Frontend | React 18 + Vite + TypeScript | |
 | Data fetching | TanStack Query | client generated from OpenAPI |
 | Styling | Tailwind | no component library — hand-roll, it's faster than fighting one |
@@ -374,6 +374,13 @@ CREATE TABLE decision_log (
 ```
 
 Append-only. No UPDATE, no DELETE — enforce with a trigger if there's time.
+
+> Enforced. `alembic/versions/9c4d1a7f52b0` installs BEFORE UPDATE / BEFORE
+> DELETE triggers. The DDL differs by dialect and is not interchangeable:
+> PostgreSQL raises from a PL/pgSQL function, MySQL signals inline with
+> `SIGNAL SQLSTATE '45000'` and has no `CREATE OR REPLACE TRIGGER`, so each
+> trigger is dropped first. SQLite installs nothing — the test suite's portable
+> path exercises the convention, not its enforcement.
 
 - `outbox(topic, payload, status, attempts, created_at)` — written in the same
   transaction as the state change it belongs to, drained by a worker.
