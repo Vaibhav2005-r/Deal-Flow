@@ -33,15 +33,18 @@ interface DemoAccount {
   scope: string;
 }
 
-const ROLES: { id: "rep" | "manager" | "finance"; label: string; desc: string }[] = [
+type RoleKey = "rep" | "manager" | "finance" | "admin";
+
+const ROLES: { id: RoleKey; label: string; desc: string }[] = [
   { id: "rep", label: "Sales Rep", desc: "Quoting, customers & catalog" },
   { id: "manager", label: "Manager", desc: "Discounts & approval chain" },
   { id: "finance", label: "Finance", desc: "Invoicing, payments & ledger" },
+  { id: "admin", label: "Admin", desc: "Configuration & system governance" },
 ];
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
-  const [selectedRole, setSelectedRole] = useState<"rep" | "manager" | "finance">("rep");
+  const [selectedRole, setSelectedRole] = useState<RoleKey>("rep");
   const [fullName, setFullName] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -101,7 +104,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [mouseX, mouseY, shouldReduceMotion]);
 
-  const handleRoleChange = (role: "rep" | "manager" | "finance") => {
+  const handleRoleChange = (role: RoleKey) => {
     setSelectedRole(role);
     setError(null);
     setSuccessMessage(null);
@@ -339,7 +342,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             </motion.div>
 
             {/* Role Selector Pills */}
-            <motion.div variants={itemVariants} className="grid grid-cols-3 gap-1.5 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
+            <motion.div variants={itemVariants} className="grid grid-cols-4 gap-1 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
               {ROLES.map((roleItem) => {
                 const isSelected = selectedRole === roleItem.id;
                 return (
@@ -347,7 +350,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                     key={roleItem.id}
                     type="button"
                     onClick={() => handleRoleChange(roleItem.id)}
-                    className={`relative py-1.5 px-2 rounded-lg text-center font-semibold text-xs transition-colors duration-200 capitalize z-10 cursor-pointer ${
+                    className={`relative py-1.5 px-1 sm:px-2 rounded-lg text-center font-semibold text-[11px] sm:text-xs transition-colors duration-200 capitalize z-10 cursor-pointer truncate ${
                       isSelected ? "text-[#3b5bf6]" : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
