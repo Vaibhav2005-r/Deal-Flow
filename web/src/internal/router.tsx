@@ -69,7 +69,7 @@ export default function InternalRouter() {
   // Live profile synchronizer with database on mount
   useEffect(() => {
     if (authed) {
-      api.get<InternalUserInfo>("/api/auth/me")
+      api.get<InternalUserInfo>("/api/me")
         .then((profile) => {
           if (profile && profile.email) {
             setCurrentUserData(profile);

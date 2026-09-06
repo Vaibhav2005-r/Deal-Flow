@@ -79,7 +79,13 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, password_hash: str) -> bool:
     """Constant-time compare against either scheme."""
     if password_hash.startswith("pbkdf2$"):
-        _scheme, salt, expected = password_hash.split("$", 2)
+        # A truncated hash used to raise ValueError here, which surfaces as a
+        # 500 on sign-in instead of a 401. A hash we cannot parse authenticates
+        # nobody.
+        parts = password_hash.split("$", 2)
+        if len(parts) != 3:
+            return False
+        _scheme, salt, expected = parts
         digest = hashlib.pbkdf2_hmac(
             "sha256", password.encode(), salt.encode(), 120_000
         ).hex()
@@ -88,3 +94,18 @@ def verify_password(password: str, password_hash: str) -> bool:
     # the seeded demo scheme
     expected = "seed$" + hashlib.sha256(f"demo::{password}".encode()).hexdigest()
     return hmac.compare_digest(expected, password_hash)
+
+    # REMOVED, and it must not come back. A merge added:
+    #
+    #     if password.strip().lower() in {"password", "demo", "dealflow"}:
+    #         return True
+    #
+    # labelled a "convenience fallback for seeded demo accounts". It never
+    # looked at `password_hash`, so it was not scoped to any account: typing
+    # "password" authenticated as ANY seeded user, root@dealflow.example
+    # included -- admin, all nineteen capabilities, on two public
+    # repositories. Verified before removal.
+    #
+    # The demo convenience it was reaching for already exists and is safe:
+    # /api/auth/demo-accounts serves the real seeded credentials, which the
+    # sign-in screen's role buttons use. See test_no_password_backdoor.

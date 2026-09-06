@@ -24,6 +24,7 @@ SELF_SERVICE_ROLE = Role.REP
 #: user minted here would sign in and then fail on every portal screen.
 SELECTABLE_ROLES: dict[str, Role] = {
     "rep": Role.REP,
+    "sales rep": Role.REP,   # the label the sign-up form shows
     "manager": Role.MANAGER,
     "finance": Role.FINANCE,
     "admin": Role.ADMIN,
@@ -119,39 +120,62 @@ def _seeded_password(session: Session, user: User) -> str | None:
 
 
 @router.get("/demo-accounts")
-def demo_accounts(session: Session = Depends(get_session)) -> list[dict]:
-    """The seeded demo logins, one per role, for the sign-in screen's buttons.
+def demo_accounts(
+    all: bool = False,
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """The seeded demo logins for the sign-in screen's role buttons.
 
     This exists because the frontend must not carry them: they are working
     accounts, both repositories are public, and a credential committed to
     web/src is published the moment it is pushed (there is a test that fails
     the build over it). Serving them keeps the one copy in seed.py.
 
-    Everything returned here is already printed in app/seed.py in a public
-    repository, so this confirms known demo credentials rather than disclosing
-    anything -- and `_seeded_password` verifies each one against the stored
-    hash, so a real account can never appear. Set
-    `demo_accounts_enabled=false` for a deployment that is not the demo.
+    When all=False, returns one account per role for backwards compatibility.
+    When all=True, returns all available seeded accounts across all roles.
     """
     if not settings.demo_accounts_enabled:
         return []
 
     out: list[dict] = []
-    for role, label in DEMO_ROLE_LABELS:
-        user = session.scalars(
-            select(User).where(User.role == role).order_by(User.id)
-        ).first()
-        if user is None:
-            continue
+    role_labels = dict(DEMO_ROLE_LABELS)
+
+    if not all:
+        for role, label in DEMO_ROLE_LABELS:
+            user = session.scalars(
+                select(User).where(User.role == role).order_by(User.id)
+            ).first()
+            if user is None:
+                continue
+            password = _seeded_password(session, user)
+            if password is None:
+                continue
+            out.append({
+                "role": str(role),
+                "label": label,
+                "email": user.email,
+                "password": password,
+                "name": user.full_name,
+                "scope": "portal" if role == Role.PORTAL else "internal",
+            })
+        return out
+
+    # If all=True, return all seeded accounts across all roles
+    users = session.scalars(
+        select(User).order_by(User.role, User.id)
+    ).all()
+    for user in users:
         password = _seeded_password(session, user)
         if password is None:
             continue
+        label = role_labels.get(user.role, str(user.role).title())
         out.append({
-            "role": str(role),
+            "role": str(user.role),
             "label": label,
             "email": user.email,
             "password": password,
-            "scope": "portal" if role == Role.PORTAL else "internal",
+            "name": user.full_name,
+            "scope": "portal" if user.role == Role.PORTAL else "internal",
         })
     return out
 
@@ -221,6 +245,9 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     # The sign-up form's role picker arrives here. resolve_signup_role honours
     # it only while demo mode is on; with the flag off it returns a rep, which
     # is what closes the escalation described in that function.
+    #
+    # Merged with the ungated role_map from odoo/main: same mapping, plus its
+    # "sales rep" alias, but behind the demo flag rather than always on.
     role_enum = resolve_signup_role(body.role)
 
     user = User(

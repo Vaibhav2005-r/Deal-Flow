@@ -107,12 +107,47 @@ def test_the_endpoint_needs_no_token(client):
 
 
 def test_it_does_not_leak_anything_beyond_the_demo_fixtures(client):
-    """Only the five fixture accounts, and only the fields the buttons need."""
+    """Only the five fixture accounts, and only the fields the buttons need.
+
+    `name` is the seeded account holder's display name, which the sign-in
+    screen shows beside each account.
+    """
     rows = client.get(ENDPOINT).json()
     assert len(rows) == 5
     for row in rows:
-        assert set(row) == {"role", "label", "email", "password", "scope"}
+        assert set(row) == {"role", "label", "email", "password", "scope", "name"}
         assert row["email"].endswith(".example")
+
+
+def test_all_true_still_only_returns_seeded_accounts(client, session):
+    """The ?all=true variant lists every seeded login, and only those.
+
+    It selects across all users rather than one per role, so it is the query
+    most likely to sweep up a real account. Every row still has to survive
+    `_seeded_password`.
+    """
+    session.add(
+        User(
+            email="real.person.all@dealflow.example",
+            full_name="Real Person",
+            role=Role.REP,
+            password_hash=hash_password("a real password"),
+        )
+    )
+    session.commit()
+
+    rows = client.get(ENDPOINT + "?all=true").json()
+    assert len(rows) >= 5
+    emails = {r["email"] for r in rows}
+    assert "real.person.all@dealflow.example" not in emails
+
+    # and each credential it hands out actually works
+    for row in rows:
+        res = client.post(
+            "/api/auth/login",
+            json={"email": row["email"], "password": row["password"]},
+        )
+        assert res.status_code == 200, f"{row['email']}: {res.text}"
 
 
 def test_an_offered_account_still_obeys_its_role(client):

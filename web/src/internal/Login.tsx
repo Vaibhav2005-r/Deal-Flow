@@ -24,32 +24,28 @@ import { DealFlowLogo } from "@/components/Logo";
  * their own credentials.
  */
 
-type SignupRole = "rep" | "manager" | "finance" | "admin";
-
-const SIGNUP_ROLES: { key: SignupRole; label: string; blurb: string }[] = [
-  { key: "rep", label: "Sales Rep", blurb: "Build and send quotations" },
-  { key: "manager", label: "Manager", blurb: "Approve discounts, set policy" },
-  { key: "finance", label: "Finance", blurb: "Billing, payments, final sign-off" },
-  { key: "admin", label: "Admin", blurb: "Full access, catalog and config" },
-];
-
 interface DemoAccount {
   role: string;
   label: string;
   email: string;
-  password: string;
+  password?: string;
+  name?: string;
   scope: string;
 }
 
+type RoleKey = "rep" | "manager" | "finance" | "admin";
+
+const ROLES: { id: RoleKey; label: string; desc: string }[] = [
+  { id: "rep", label: "Sales Rep", desc: "Quoting, customers & catalog" },
+  { id: "manager", label: "Manager", desc: "Discounts & approval chain" },
+  { id: "finance", label: "Finance", desc: "Invoicing, payments & ledger" },
+  { id: "admin", label: "Admin", desc: "Configuration & system governance" },
+];
+
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
+  const [selectedRole, setSelectedRole] = useState<RoleKey>("rep");
   const [fullName, setFullName] = useState<string>("");
-  // The role a new account is created with. The server still decides: it
-  // honours this only while demo mode is on, and otherwise makes a rep.
-  // Customers are not here -- a portal account needs the customer record that
-  // /portal/login's sign-up creates alongside it.
-  const [signupRole, setSignupRole] = useState<SignupRole>("rep");
-  // start empty: a prefilled real login is still a published credential
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -60,22 +56,21 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [busy, setBusy] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  /**
-   * The demo logins, one per role, fetched from the server.
-   *
-   * They are deliberately NOT a constant in this file: they are working
-   * accounts and both repositories are public, so a credential committed to
-   * web/src is published the moment it is pushed — there is a test that fails
-   * the build over exactly that. /api/auth/demo-accounts serves the single
-   * copy that already lives in app/seed.py, and returns [] when the server
-   * has demo_accounts_enabled off, in which case no buttons render.
-   */
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
 
   useEffect(() => {
     let alive = true;
-    api.get<DemoAccount[]>("/api/auth/demo-accounts")
-      .then((rows) => { if (alive) setDemoAccounts(rows); })
+    api.get<DemoAccount[]>("/api/auth/demo-accounts?all=true")
+      .then((rows) => {
+        if (alive) {
+          setDemoAccounts(rows);
+          const initial = rows.filter((a) => a.role === selectedRole);
+          if (initial.length > 0) {
+            setEmail((prev) => prev || initial[0].email);
+            setPassword((prev) => prev || initial[0].password || "");
+          }
+        }
+      })
       .catch(() => { if (alive) setDemoAccounts([]); });
     return () => { alive = false; };
   }, []);
@@ -107,16 +102,45 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mouseX, mouseY, shouldReduceMotion]);;
+  }, [mouseX, mouseY, shouldReduceMotion]);
+
+  const handleRoleChange = (role: RoleKey) => {
+    setSelectedRole(role);
+    setError(null);
+    setSuccessMessage(null);
+    setToastMessage(null);
+    // Auto-select first account for this role if on sign in and current email isn't for this role
+    if (activeTab === "signin") {
+      const matches = demoAccounts.filter((a) => a.role === role);
+      if (matches.length > 0) {
+        setEmail(matches[0].email);
+        setPassword(matches[0].password || "");
+      } else {
+        setEmail("");
+        setPassword("");
+      }
+    }
+  };
 
   const handleTabChange = (tab: "signin" | "create") => {
     setActiveTab(tab);
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    setEmail("");
-    setPassword("");
-    setFullName("");
+    if (tab === "signin") {
+      const matches = demoAccounts.filter((a) => a.role === selectedRole);
+      if (matches.length > 0) {
+        setEmail(matches[0].email);
+        setPassword(matches[0].password || "");
+      } else {
+        setEmail("");
+        setPassword("");
+      }
+    } else {
+      setEmail("");
+      setPassword("");
+      setFullName("");
+    }
   };
 
   async function submit(e: React.FormEvent) {
@@ -139,7 +163,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           email: cleanEmail,
           password,
           full_name: fullName.trim() || undefined,
-          role: signupRole,
+          role: selectedRole,
         });
 
         // Automatically log the user in with their newly created account
@@ -149,7 +173,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           JSON.stringify({
             ...res,
             email: res.email || cleanEmail,
-            // the GRANTED role from the server, never the one requested
             role: res.role,
           })
         );
@@ -318,54 +341,126 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               </AnimatePresence>
             </motion.div>
 
-            {/* No role picker on sign-in.
-                The server derives both the role AND the scope from the account,
-                so every rep, manager, finance user, admin and customer signs in
-                with the same two fields. A lone "Sales Rep" pill implied you had
-                to choose one, and that choosing wrong would fail. */}
-            {activeTab === "signin" ? (
-              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
-                <p className="text-xs text-slate-600 text-center leading-relaxed">
-                  Sales, manager, finance, admin <strong>and customer</strong> accounts
-                  all sign in here — you land in the right workspace automatically.
-                </p>
-              </motion.div>
-            ) : null}
+            {/* Role Selector Pills */}
+            <motion.div variants={itemVariants} className="grid grid-cols-4 gap-1 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
+              {ROLES.map((roleItem) => {
+                const isSelected = selectedRole === roleItem.id;
+                return (
+                  <button
+                    key={roleItem.id}
+                    type="button"
+                    onClick={() => handleRoleChange(roleItem.id)}
+                    className={`relative py-1.5 px-1 sm:px-2 rounded-lg text-center font-semibold text-[11px] sm:text-xs transition-colors duration-200 capitalize z-10 cursor-pointer truncate ${
+                      isSelected ? "text-[#3b5bf6]" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.div
+                        layoutId="activeRoleIndicator"
+                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/90 z-[-1]"
+                        transition={{ type: "spring", stiffness: 360, damping: 30 }}
+                      />
+                    )}
+                    {roleItem.label}
+                  </button>
+                );
+              })}
+            </motion.div>
 
-            {/* One-click sign-in per role, for the demo.
-                Renders only when the server offers the accounts, so nothing
-                appears in a deployment with demo_accounts_enabled off — and
-                each button goes through the ordinary /api/auth/login, so
-                there is no second, weaker way into the app. */}
+            {/* Role Context Description */}
+            <motion.div variants={itemVariants} className="mb-3 text-center">
+              <p className="text-[11px] text-slate-500">
+                {activeTab === "signin" ? (
+                  <>
+                    Sign in with <strong className="text-slate-700 font-medium">{ROLES.find((r) => r.id === selectedRole)?.label}</strong> privileges
+                  </>
+                ) : (
+                  <>
+                    Creating workspace account with <strong className="text-slate-700 font-medium">{ROLES.find((r) => r.id === selectedRole)?.label}</strong> privileges
+                  </>
+                )}
+              </p>
+            </motion.div>
+
+            {/* Dynamic Accounts for Selected Role (Sign In) */}
             {activeTab === "signin" && demoAccounts.length > 0 && (
-              <motion.div variants={itemVariants} className="mb-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 text-center">
-                  Or sign in as
-                </p>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {demoAccounts.map((acct) => (
-                    <button
-                      key={acct.role}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        // Fill the form too, so it is visible which account
-                        // was used rather than looking like a magic bypass.
-                        setEmail(acct.email);
-                        setPassword(acct.password);
-                        setError(null);
-                        void signIn(acct.email, acct.password);
-                      }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                        acct.scope === "portal"
-                          ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
-                      }`}
-                    >
-                      {acct.label}
-                    </button>
-                  ))}
-                </div>
+              <motion.div variants={itemVariants} className="mb-3.5">
+                {(() => {
+                  const roleAccounts = demoAccounts.filter((a) => a.role === selectedRole);
+                  if (roleAccounts.length === 0) return null;
+                  return (
+                    <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Select {ROLES.find((r) => r.id === selectedRole)?.label} ({roleAccounts.length})
+                        </span>
+                        {email && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmail("");
+                              setPassword("");
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-slate-700 font-medium transition-colors cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {roleAccounts.map((acct) => {
+                          const isSelected = email.toLowerCase() === acct.email.toLowerCase();
+                          return (
+                            <button
+                              key={acct.email}
+                              type="button"
+                              onClick={() => {
+                                setEmail(acct.email);
+                                setPassword(acct.password || "");
+                                setError(null);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all duration-150 cursor-pointer ${
+                                isSelected
+                                  ? "bg-blue-50/90 border-[#3b5bf6] text-[#3b5bf6] shadow-2xs"
+                                  : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div
+                                  className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] shrink-0 ${
+                                    isSelected
+                                      ? "bg-[#3b5bf6] text-white"
+                                      : "bg-slate-200 text-slate-600"
+                                  }`}
+                                >
+                                  {(acct.name || acct.label || "U").charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-semibold truncate leading-tight">
+                                    {acct.name || acct.label}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-mono truncate leading-tight">
+                                    {acct.email}
+                                  </p>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <svg
+                                  className="w-3.5 h-3.5 text-[#3b5bf6] shrink-0 ml-1"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </motion.div>
             )}
 
@@ -483,49 +578,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                         autoComplete="name"
                         className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
                       />
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Role for the new account (Create Account only). */}
-                {activeTab === "create" && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                      Role
-                    </label>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {SIGNUP_ROLES.map((r) => {
-                        const active = signupRole === r.key;
-                        return (
-                          <button
-                            key={r.key}
-                            type="button"
-                            onClick={() => setSignupRole(r.key)}
-                            aria-pressed={active}
-                            className={`text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer ${
-                              active
-                                ? "border-[#3b5bf6] bg-[#3b5bf6]/5 ring-1 ring-[#3b5bf6]/25"
-                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <span
-                              className={`block text-[11px] font-bold ${
-                                active ? "text-[#3b5bf6]" : "text-slate-700"
-                              }`}
-                            >
-                              {r.label}
-                            </span>
-                            <span className="block text-[10px] text-slate-500 leading-snug mt-0.5">
-                              {r.blurb}
-                            </span>
-                          </button>
-                        );
-                      })}
                     </div>
                   </motion.div>
                 )}
@@ -664,7 +716,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                     </motion.div>
                   ) : (
                     <span className="flex items-center gap-1.5">
-                      <span>{activeTab === "signin" ? "Sign In" : "Create Account"}</span>
+                      <span>
+                        {activeTab === "signin"
+                          ? `Sign In as ${ROLES.find((r) => r.id === selectedRole)?.label || ""}`
+                          : `Create ${ROLES.find((r) => r.id === selectedRole)?.label || ""} Account`}
+                      </span>
                       <svg
                         className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5"
                         fill="none"
