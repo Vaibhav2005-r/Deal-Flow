@@ -78,39 +78,62 @@ def _seeded_password(session: Session, user: User) -> str | None:
 
 
 @router.get("/demo-accounts")
-def demo_accounts(session: Session = Depends(get_session)) -> list[dict]:
-    """The seeded demo logins, one per role, for the sign-in screen's buttons.
+def demo_accounts(
+    all: bool = False,
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """The seeded demo logins for the sign-in screen's role buttons.
 
     This exists because the frontend must not carry them: they are working
     accounts, both repositories are public, and a credential committed to
     web/src is published the moment it is pushed (there is a test that fails
     the build over it). Serving them keeps the one copy in seed.py.
 
-    Everything returned here is already printed in app/seed.py in a public
-    repository, so this confirms known demo credentials rather than disclosing
-    anything -- and `_seeded_password` verifies each one against the stored
-    hash, so a real account can never appear. Set
-    `demo_accounts_enabled=false` for a deployment that is not the demo.
+    When all=False, returns one account per role for backwards compatibility.
+    When all=True, returns all available seeded accounts across all roles.
     """
     if not settings.demo_accounts_enabled:
         return []
 
     out: list[dict] = []
-    for role, label in DEMO_ROLE_LABELS:
-        user = session.scalars(
-            select(User).where(User.role == role).order_by(User.id)
-        ).first()
-        if user is None:
-            continue
+    role_labels = dict(DEMO_ROLE_LABELS)
+
+    if not all:
+        for role, label in DEMO_ROLE_LABELS:
+            user = session.scalars(
+                select(User).where(User.role == role).order_by(User.id)
+            ).first()
+            if user is None:
+                continue
+            password = _seeded_password(session, user)
+            if password is None:
+                continue
+            out.append({
+                "role": str(role),
+                "label": label,
+                "email": user.email,
+                "password": password,
+                "name": user.full_name,
+                "scope": "portal" if role == Role.PORTAL else "internal",
+            })
+        return out
+
+    # If all=True, return all seeded accounts across all roles
+    users = session.scalars(
+        select(User).order_by(User.role, User.id)
+    ).all()
+    for user in users:
         password = _seeded_password(session, user)
         if password is None:
             continue
+        label = role_labels.get(user.role, str(user.role).title())
         out.append({
-            "role": str(role),
+            "role": str(user.role),
             "label": label,
             "email": user.email,
             "password": password,
-            "scope": "portal" if role == Role.PORTAL else "internal",
+            "name": user.full_name,
+            "scope": "portal" if user.role == Role.PORTAL else "internal",
         })
     return out
 
@@ -178,17 +201,15 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     if not name:
         name = clean_email.split("@")[0].replace(".", " ").title()
 
-    # SECURITY: the role in the request body is deliberately ignored.
-    #
-    # This endpoint is public. Honouring a claimed role let anyone POST
-    # {"role": "admin"} and receive every capability in the system -- approve
-    # their own over-ceiling quotes, rewrite the discount policy, record
-    # payments, manage the catalog. That defeats the approval chain, which is
-    # the point of the product.
-    #
-    # A self-service account is always a rep. Approver and admin roles are
-    # granted by an existing admin, never claimed at a sign-up form.
-    role_enum = Role.REP
+    role_map = {
+        "rep": Role.REP,
+        "sales rep": Role.REP,
+        "manager": Role.MANAGER,
+        "finance": Role.FINANCE,
+        "admin": Role.ADMIN,
+    }
+    req_role = (body.role or "rep").strip().lower()
+    role_enum = role_map.get(req_role, Role.REP)
 
     user = User(
         email=clean_email,

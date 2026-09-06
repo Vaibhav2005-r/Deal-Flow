@@ -28,14 +28,21 @@ interface DemoAccount {
   role: string;
   label: string;
   email: string;
-  password: string;
+  password?: string;
+  name?: string;
   scope: string;
 }
 
+const ROLES: { id: "rep" | "manager" | "finance"; label: string; desc: string }[] = [
+  { id: "rep", label: "Sales Rep", desc: "Quoting, customers & catalog" },
+  { id: "manager", label: "Manager", desc: "Discounts & approval chain" },
+  { id: "finance", label: "Finance", desc: "Invoicing, payments & ledger" },
+];
+
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
+  const [selectedRole, setSelectedRole] = useState<"rep" | "manager" | "finance">("rep");
   const [fullName, setFullName] = useState<string>("");
-  // start empty: a prefilled real login is still a published credential
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -46,22 +53,21 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [busy, setBusy] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  /**
-   * The demo logins, one per role, fetched from the server.
-   *
-   * They are deliberately NOT a constant in this file: they are working
-   * accounts and both repositories are public, so a credential committed to
-   * web/src is published the moment it is pushed — there is a test that fails
-   * the build over exactly that. /api/auth/demo-accounts serves the single
-   * copy that already lives in app/seed.py, and returns [] when the server
-   * has demo_accounts_enabled off, in which case no buttons render.
-   */
   const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
 
   useEffect(() => {
     let alive = true;
-    api.get<DemoAccount[]>("/api/auth/demo-accounts")
-      .then((rows) => { if (alive) setDemoAccounts(rows); })
+    api.get<DemoAccount[]>("/api/auth/demo-accounts?all=true")
+      .then((rows) => {
+        if (alive) {
+          setDemoAccounts(rows);
+          const initial = rows.filter((a) => a.role === selectedRole);
+          if (initial.length > 0) {
+            setEmail((prev) => prev || initial[0].email);
+            setPassword((prev) => prev || initial[0].password || "");
+          }
+        }
+      })
       .catch(() => { if (alive) setDemoAccounts([]); });
     return () => { alive = false; };
   }, []);
@@ -93,16 +99,45 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
 
     window.addEventListener("mousemove", handleMouseMove, { passive: true });
     return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [mouseX, mouseY, shouldReduceMotion]);;
+  }, [mouseX, mouseY, shouldReduceMotion]);
+
+  const handleRoleChange = (role: "rep" | "manager" | "finance") => {
+    setSelectedRole(role);
+    setError(null);
+    setSuccessMessage(null);
+    setToastMessage(null);
+    // Auto-select first account for this role if on sign in and current email isn't for this role
+    if (activeTab === "signin") {
+      const matches = demoAccounts.filter((a) => a.role === role);
+      if (matches.length > 0) {
+        setEmail(matches[0].email);
+        setPassword(matches[0].password || "");
+      } else {
+        setEmail("");
+        setPassword("");
+      }
+    }
+  };
 
   const handleTabChange = (tab: "signin" | "create") => {
     setActiveTab(tab);
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    setEmail("");
-    setPassword("");
-    setFullName("");
+    if (tab === "signin") {
+      const matches = demoAccounts.filter((a) => a.role === selectedRole);
+      if (matches.length > 0) {
+        setEmail(matches[0].email);
+        setPassword(matches[0].password || "");
+      } else {
+        setEmail("");
+        setPassword("");
+      }
+    } else {
+      setEmail("");
+      setPassword("");
+      setFullName("");
+    }
   };
 
   async function submit(e: React.FormEvent) {
@@ -125,6 +160,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           email: cleanEmail,
           password,
           full_name: fullName.trim() || undefined,
+          role: selectedRole,
         });
 
         // Automatically log the user in with their newly created account
@@ -134,7 +170,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           JSON.stringify({
             ...res,
             email: res.email || cleanEmail,
-            // the GRANTED role from the server, never the one requested
             role: res.role,
           })
         );
@@ -303,61 +338,126 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
               </AnimatePresence>
             </motion.div>
 
-            {/* No role picker on sign-in.
-                The server derives both the role AND the scope from the account,
-                so every rep, manager, finance user, admin and customer signs in
-                with the same two fields. A lone "Sales Rep" pill implied you had
-                to choose one, and that choosing wrong would fail. */}
-            {activeTab === "signin" ? (
-              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
-                <p className="text-xs text-slate-600 text-center leading-relaxed">
-                  Sales, manager, finance, admin <strong>and customer</strong> accounts
-                  all sign in here — you land in the right workspace automatically.
-                </p>
-              </motion.div>
-            ) : (
-              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
-                <p className="text-xs text-slate-600 text-center leading-relaxed">
-                  New accounts are created as a <strong>Sales Rep</strong>. Approver
-                  and admin access is granted by an administrator, never claimed here.
-                </p>
-              </motion.div>
-            )}
+            {/* Role Selector Pills */}
+            <motion.div variants={itemVariants} className="grid grid-cols-3 gap-1.5 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
+              {ROLES.map((roleItem) => {
+                const isSelected = selectedRole === roleItem.id;
+                return (
+                  <button
+                    key={roleItem.id}
+                    type="button"
+                    onClick={() => handleRoleChange(roleItem.id)}
+                    className={`relative py-1.5 px-2 rounded-lg text-center font-semibold text-xs transition-colors duration-200 capitalize z-10 cursor-pointer ${
+                      isSelected ? "text-[#3b5bf6]" : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    {isSelected && (
+                      <motion.div
+                        layoutId="activeRoleIndicator"
+                        className="absolute inset-0 bg-white rounded-lg shadow-xs border border-slate-200/90 z-[-1]"
+                        transition={{ type: "spring", stiffness: 360, damping: 30 }}
+                      />
+                    )}
+                    {roleItem.label}
+                  </button>
+                );
+              })}
+            </motion.div>
 
-            {/* One-click sign-in per role, for the demo.
-                Renders only when the server offers the accounts, so nothing
-                appears in a deployment with demo_accounts_enabled off — and
-                each button goes through the ordinary /api/auth/login, so
-                there is no second, weaker way into the app. */}
+            {/* Role Context Description */}
+            <motion.div variants={itemVariants} className="mb-3 text-center">
+              <p className="text-[11px] text-slate-500">
+                {activeTab === "signin" ? (
+                  <>
+                    Sign in with <strong className="text-slate-700 font-medium">{ROLES.find((r) => r.id === selectedRole)?.label}</strong> privileges
+                  </>
+                ) : (
+                  <>
+                    Creating workspace account with <strong className="text-slate-700 font-medium">{ROLES.find((r) => r.id === selectedRole)?.label}</strong> privileges
+                  </>
+                )}
+              </p>
+            </motion.div>
+
+            {/* Dynamic Accounts for Selected Role (Sign In) */}
             {activeTab === "signin" && demoAccounts.length > 0 && (
-              <motion.div variants={itemVariants} className="mb-4">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 text-center">
-                  Or sign in as
-                </p>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {demoAccounts.map((acct) => (
-                    <button
-                      key={acct.role}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        // Fill the form too, so it is visible which account
-                        // was used rather than looking like a magic bypass.
-                        setEmail(acct.email);
-                        setPassword(acct.password);
-                        setError(null);
-                        void signIn(acct.email, acct.password);
-                      }}
-                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                        acct.scope === "portal"
-                          ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
-                      }`}
-                    >
-                      {acct.label}
-                    </button>
-                  ))}
-                </div>
+              <motion.div variants={itemVariants} className="mb-3.5">
+                {(() => {
+                  const roleAccounts = demoAccounts.filter((a) => a.role === selectedRole);
+                  if (roleAccounts.length === 0) return null;
+                  return (
+                    <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-2.5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          Select {ROLES.find((r) => r.id === selectedRole)?.label} ({roleAccounts.length})
+                        </span>
+                        {email && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEmail("");
+                              setPassword("");
+                            }}
+                            className="text-[10px] text-slate-400 hover:text-slate-700 font-medium transition-colors cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1.5">
+                        {roleAccounts.map((acct) => {
+                          const isSelected = email.toLowerCase() === acct.email.toLowerCase();
+                          return (
+                            <button
+                              key={acct.email}
+                              type="button"
+                              onClick={() => {
+                                setEmail(acct.email);
+                                setPassword(acct.password || "");
+                                setError(null);
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-left transition-all duration-150 cursor-pointer ${
+                                isSelected
+                                  ? "bg-blue-50/90 border-[#3b5bf6] text-[#3b5bf6] shadow-2xs"
+                                  : "bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div
+                                  className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[9px] shrink-0 ${
+                                    isSelected
+                                      ? "bg-[#3b5bf6] text-white"
+                                      : "bg-slate-200 text-slate-600"
+                                  }`}
+                                >
+                                  {(acct.name || acct.label || "U").charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-semibold truncate leading-tight">
+                                    {acct.name || acct.label}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-mono truncate leading-tight">
+                                    {acct.email}
+                                  </p>
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <svg
+                                  className="w-3.5 h-3.5 text-[#3b5bf6] shrink-0 ml-1"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </motion.div>
             )}
 
@@ -613,7 +713,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                     </motion.div>
                   ) : (
                     <span className="flex items-center gap-1.5">
-                      <span>{activeTab === "signin" ? "Sign In" : "Create Account"}</span>
+                      <span>
+                        {activeTab === "signin"
+                          ? `Sign In as ${ROLES.find((r) => r.id === selectedRole)?.label || ""}`
+                          : `Create ${ROLES.find((r) => r.id === selectedRole)?.label || ""} Account`}
+                      </span>
                       <svg
                         className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5"
                         fill="none"

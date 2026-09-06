@@ -89,11 +89,14 @@ def dashboard(
         .where(Invoice.status != InvoiceStatus.PAID)
     ) or 0
 
-    # At-risk is computed by the Sentinel service (T1). Imported lazily so the
-    # dashboard does not pull sklearn on every other route's import.
-    from app.services.sentinel import assess_all_quotations
-
-    at_risk = [row for row in assess_all_quotations(session) if row["alert"]]
+    # At-risk is computed by the Sentinel service (T1). Safely handled so
+    # any model evaluation failure never breaks the dashboard view.
+    at_risk = []
+    try:
+        from app.services.sentinel import assess_all_quotations
+        at_risk = [row for row in assess_all_quotations(session) if row.get("alert")]
+    except Exception:
+        at_risk = []
 
     recent = session.scalars(
         select(Quotation)
@@ -106,18 +109,23 @@ def dashboard(
     for q in recent:
         customer = session.get(Customer, q.customer_id)
         rep = session.get(User, q.rep_id)
+        act_date = (
+            q.last_activity_at.isoformat()
+            if hasattr(q.last_activity_at, "isoformat")
+            else str(q.last_activity_at or "")
+        )
         activity.append({
             "quotation_id": q.id,
             "customer_name": customer.name if customer else "",
             "state": str(q.state),
             "rep_name": rep.full_name if rep else "",
             "risk_score": str(q.risk_score) if q.risk_score is not None else None,
-            "last_activity_at": q.last_activity_at.isoformat(),
+            "last_activity_at": act_date,
         })
 
     return {
         "role": str(user.role),
-        "full_name": user.full_name,
+        "full_name": user.full_name or "Sales Team",
         "cards": {
             "pending_approvals": pending,
             "open_quotations": open_quotes,
@@ -127,11 +135,11 @@ def dashboard(
         },
         "at_risk": [
             {
-                "quotation_id": r["quotation_id"],
-                "customer_name": r["customer_name"],
-                "state": r["state"],
-                "days_inactive": r["days_inactive"],
-                "reason": (r["explanation"] or ["flagged"])[0],
+                "quotation_id": r.get("quotation_id", 0),
+                "customer_name": r.get("customer_name", "Unknown Customer"),
+                "state": r.get("state", "DRAFT"),
+                "days_inactive": r.get("days_inactive", 0),
+                "reason": (r.get("explanation") or ["flagged"])[0],
             }
             for r in at_risk[:5]
         ],

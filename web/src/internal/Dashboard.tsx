@@ -28,12 +28,21 @@ export default function Dashboard() {
     );
   }
 
-  const c = data.cards;
+  const c = data.cards || {
+    pending_approvals: 0,
+    open_quotations: 0,
+    at_risk_deals: 0,
+    awaiting_fulfillment: 0,
+    unpaid_invoices: 0,
+  };
+  const firstName = data.full_name ? data.full_name.split(" ")[0] : "Team";
+  const atRisk = data.at_risk || [];
+  const recentActivity = data.recent_activity || [];
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Welcome back, ${data.full_name.split(" ")[0]}`}
+        title={`Welcome back, ${firstName}`}
         subtitle={
           "Operational overview: pipeline movement, pending approvals, and deal risks." +
           (lastUpdated ? ` · live, updated ${lastUpdated.toLocaleTimeString()}` : "")
@@ -103,13 +112,13 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {data.at_risk.length === 0 ? (
+          {atRisk.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400 font-medium">
               ✓ No stalled or anomalous deals flagged.
             </div>
           ) : (
             <ul className="space-y-2.5">
-              {data.at_risk.map((r) => (
+              {atRisk.map((r) => (
                 <li
                   key={r.quotation_id}
                   className="bg-slate-50/70 border border-slate-200/80 rounded-lg p-3 hover:border-slate-300 transition-colors"
@@ -141,14 +150,14 @@ export default function Dashboard() {
           </div>
 
           <ul className="divide-y divide-slate-100">
-            {data.recent_activity.map((a) => (
+            {recentActivity.map((a) => (
               <li key={a.quotation_id} className="py-2.5 flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-900 truncate">
                     #{a.quotation_id} {a.customer_name}
                   </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Assigned: {a.rep_name} · {a.last_activity_at.slice(0, 10)}
+                    Assigned: {a.rep_name} · {(a.last_activity_at || "").slice(0, 10)}
                   </p>
                 </div>
                 <StateBadge state={a.state} />

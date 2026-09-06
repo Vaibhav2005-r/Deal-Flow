@@ -7,7 +7,7 @@ services:
       MYSQL_USER: dealflow
       MYSQL_PASSWORD: dealflow
       MYSQL_ROOT_PASSWORD: dealflow_root
-    ports: ["3306:3306"]
+    ports: ["3307:3306"]
     volumes: ["mysqldata:/var/lib/mysql"]
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "dealflow", "-pdealflow"]
