@@ -8,6 +8,7 @@ import {
   type SubscriptionRow,
   type DealHealthAssessment,
   type RevenueTrend,
+  type DashboardOut,
 } from "@/lib/api";
 import { currency, StateBadge } from "./components";
 import { useLiveData } from "@/lib/live";
@@ -30,6 +31,12 @@ interface PeriodData {
 export default function FinanceHome() {
   const navigate = useNavigate();
   const shouldReduceMotion = useReducedMotion();
+
+  // The activity feed below used to be five hardcoded lines with invented
+  // timestamps ("42m ago"). /api/dashboard already returns the real thing.
+  const dashboard = useLiveData<DashboardOut>(
+    () => api.get<DashboardOut>("/api/dashboard"),
+  );
 
   const [period, setPeriod] = useState<"monthly" | "quarterly" | "yearly">("monthly");
   const trend = useLiveData<RevenueTrend>(
@@ -93,11 +100,28 @@ export default function FinanceHome() {
   const activeSubs = subscriptions.filter((s) => s.status === "active");
   const mrr = activeSubs.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
 
-  // Fallbacks if data is fresh / unseeded
-  const displayQuotationValue = totalQuotationValue > 0 ? totalQuotationValue : 5840000;
-  const displayPendingApprovals = pendingApprovalsCount > 0 ? pendingApprovalsCount : 7;
-  const displayOutstandingAmount = totalOutstanding > 0 ? totalOutstanding : 860000;
-  const displayActiveSubs = activeSubs.length > 0 ? activeSubs.length : 128;
+  // These four were "fallbacks if data is fresh / unseeded": ₹58.4L of
+  // quotations, 7 pending approvals, ₹8.6L outstanding and 128 active
+  // subscriptions, shown as this company's real numbers whenever the API
+  // returned nothing. An empty system reports zero.
+  const displayQuotationValue = totalQuotationValue;
+  const displayPendingApprovals = pendingApprovalsCount;
+  const displayOutstandingAmount = totalOutstanding;
+  const displayActiveSubs = activeSubs.length;
+
+  // Settled and long-outstanding, both summed from the invoices themselves —
+  // the two tiles below printed the constants ₹34.8L and ₹3.2L.
+  const totalSettled = invoices.reduce((acc, inv) => acc + (Number(inv.paid) || 0), 0);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const agedOutstanding = invoices.reduce(
+    (acc, inv) =>
+      inv.issued_at && inv.issued_at.slice(0, 10) < thirtyDaysAgo
+        ? acc + (Number(inv.outstanding) || 0)
+        : acc,
+    0,
+  );
 
   // Chart datasets
   const chartData: PeriodData[] = (trend.data?.series ?? []).map((s) => ({
@@ -257,7 +281,7 @@ export default function FinanceHome() {
             {displayActiveSubs}
           </div>
           <div className="mt-2 text-[11px] text-slate-600 font-medium bg-emerald-50/80 border border-emerald-200/70 px-2.5 py-0.5 rounded-full">
-            MRR: <span className="font-bold text-slate-800">{formatLakhs(mrr > 0 ? mrr : 1420000)}</span> / month
+            MRR: <span className="font-bold text-slate-800">{formatLakhs(mrr)}</span> / month
           </div>
         </div>
       </motion.div>
@@ -367,37 +391,15 @@ export default function FinanceHome() {
             </div>
 
             <div className="space-y-3">
+              {/* An empty queue says so. This branch used to render three
+                  invented approvals — "ABC Corporation", "XYZ Industries",
+                  "Acme Enterprise", with reps who do not exist — which is
+                  indistinguishable from a real queue to anyone reading the
+                  screen, and they carried Review buttons. */}
               {approvals.length === 0 ? (
-                [
-                  { id: 2048, customer: "ABC Corporation", value: 840000, discount: 18, margin: 22, rep: "Priya Raghavan" },
-                  { id: 2051, customer: "XYZ Industries", value: 1250000, discount: 15, margin: 19, rep: "Marcus Vance" },
-                  { id: 2056, customer: "Acme Enterprise", value: 680000, discount: 20, margin: 24, rep: "Sarah Connor" },
-                ].map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-300 transition-colors"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900">#Q-{item.id}</span>
-                        <span className="text-xs text-slate-400">·</span>
-                        <span className="text-xs font-semibold text-slate-700">{item.customer}</span>
-                      </div>
-                      <div className="flex items-center gap-4 mt-1.5 text-[11px] text-slate-500">
-                        <span>Deal Value: <strong className="text-slate-800">{formatLakhs(item.value)}</strong></span>
-                        <span>Discount: <strong className="text-amber-600">{item.discount}%</strong></span>
-                        <span>Margin: <strong className="text-emerald-600">{item.margin}%</strong></span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => navigate("/approvals")}
-                      className="px-3 py-1.5 bg-[#1d72f2] hover:bg-[#155fc7] text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
-                    >
-                      Review
-                    </button>
-                  </div>
-                ))
+                <p className="py-6 text-center text-xs text-slate-400">
+                  No quotations are awaiting a finance decision.
+                </p>
               ) : (
                 approvals.slice(0, 3).map((q) => {
                   const netTotal = Number(q.totals?.net_total ?? 0);
@@ -463,7 +465,7 @@ export default function FinanceHome() {
               <div>
                 <span className="text-[11px] font-medium text-slate-500">Settled Collections</span>
                 <p className="text-base font-bold text-emerald-600 mt-0.5">
-                  {formatLakhs(3480000)}
+                  {formatLakhs(totalSettled)}
                 </p>
               </div>
               <div>
@@ -473,9 +475,9 @@ export default function FinanceHome() {
                 </p>
               </div>
               <div>
-                <span className="text-[11px] font-medium text-slate-500">Overdue (&gt;30d)</span>
+                <span className="text-[11px] font-medium text-slate-500">Outstanding &gt;30d</span>
                 <p className="text-base font-bold text-rose-600 mt-0.5">
-                  {formatLakhs(320000)}
+                  {formatLakhs(agedOutstanding)}
                 </p>
               </div>
             </div>
@@ -493,39 +495,16 @@ export default function FinanceHome() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
+                  {/* Same again: four invented invoices, complete with
+                      customers and due dates, shown whenever the real list was
+                      empty — and each row navigated to /invoices as if it were
+                      a record you could open. */}
                   {invoices.length === 0 ? (
-                    [
-                      { ref: "INV-1024", customer: "ABC Corp", amount: 85000, date: "12 Sep", status: "pending" },
-                      { ref: "INV-1025", customer: "XYZ Ltd", amount: 120000, date: "08 Sep", status: "paid" },
-                      { ref: "INV-1026", customer: "Acme Inc", amount: 64000, date: "02 Sep", status: "overdue" },
-                      { ref: "INV-1027", customer: "Delta Soft", amount: 145000, date: "15 Sep", status: "pending" },
-                    ].map((inv) => (
-                      <tr
-                        key={inv.ref}
-                        onClick={() => navigate("/invoices")}
-                        className="hover:bg-slate-50/80 cursor-pointer transition-colors"
-                      >
-                        <td className="px-3.5 py-2.5 font-bold text-slate-900">{inv.ref}</td>
-                        <td className="px-3.5 py-2.5 text-slate-700">{inv.customer}</td>
-                        <td className="px-3.5 py-2.5 text-right font-semibold text-slate-800">
-                          {formatLakhs(inv.amount)}
-                        </td>
-                        <td className="px-3.5 py-2.5 text-slate-500">{inv.date}</td>
-                        <td className="px-3.5 py-2.5">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold capitalize ${
-                              inv.status === "paid"
-                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                : inv.status === "overdue"
-                                ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                : "bg-amber-50 text-amber-700 border border-amber-200"
-                            }`}
-                          >
-                            {inv.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    <tr>
+                      <td colSpan={5} className="px-3.5 py-6 text-center text-xs text-slate-400">
+                        No invoices yet.
+                      </td>
+                    </tr>
                   ) : (
                     invoices.slice(0, 4).map((inv) => (
                       <tr
@@ -674,23 +653,27 @@ export default function FinanceHome() {
               Recent Financial Activity
             </h2>
             <div className="space-y-2.5">
-              {[
-                { icon: "✓", text: "Invoice INV-1025 settled and marked as paid", time: "10m ago", tone: "text-emerald-600 bg-emerald-50" },
-                { icon: "⏳", text: "QTN-2048 escalated for Finance threshold approval", time: "42m ago", tone: "text-amber-600 bg-amber-50" },
-                { icon: "🔄", text: "Subscription SUB-301 recurring cycle renewed", time: "2h ago", tone: "text-blue-600 bg-blue-50" },
-                { icon: "💳", text: "Payment reconciliation received from ABC Corp", time: "4h ago", tone: "text-emerald-600 bg-emerald-50" },
-                { icon: "🛡️", text: "Discount policy validated by Sentinel governance", time: "6h ago", tone: "text-indigo-600 bg-indigo-50" },
-              ].map((act, i) => (
-                <div key={i} className="flex items-start gap-2.5 text-xs text-slate-600">
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] ${act.tone}`}>
-                    {act.icon}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-slate-800 truncate">{act.text}</p>
-                    <span className="text-[10px] text-slate-400">{act.time}</span>
+              {(dashboard.data?.recent_activity ?? []).length === 0 ? (
+                <p className="py-4 text-center text-xs text-slate-400">
+                  No recent activity.
+                </p>
+              ) : (
+                (dashboard.data?.recent_activity ?? []).slice(0, 5).map((act) => (
+                  <div key={act.quotation_id} className="flex items-start gap-2.5 text-xs text-slate-600">
+                    <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] text-indigo-600 bg-indigo-50">
+                      #
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-800 truncate">
+                        Q-{act.quotation_id} · {act.customer_name} — {act.state}
+                      </p>
+                      <span className="text-[10px] text-slate-400">
+                        {act.rep_name} · {act.last_activity_at?.slice(0, 10) ?? "—"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </motion.section>
         </div>

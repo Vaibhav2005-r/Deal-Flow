@@ -36,6 +36,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    #: Serves the seeded demo logins at /api/auth/demo-accounts so the sign-in
+    #: screen can offer a button per role. On by default because this IS the
+    #: hackathon demo and every credential it returns is already published in
+    #: app/seed.py; the endpoint only ever confirms accounts that still carry
+    #: the seed hash, never a real one. Turn it off in a real deployment.
+    demo_accounts_enabled: bool = True
+
     # §9 — the one LLM call. Off by default; the template path is complete.
     narrator_enabled: bool = False
     narrator_timeout_ms: int = 800

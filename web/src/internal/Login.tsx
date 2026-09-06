@@ -24,6 +24,14 @@ import { DealFlowLogo } from "@/components/Logo";
  * their own credentials.
  */
 
+interface DemoAccount {
+  role: string;
+  label: string;
+  email: string;
+  password: string;
+  scope: string;
+}
+
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
   const [fullName, setFullName] = useState<string>("");
@@ -37,6 +45,26 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  /**
+   * The demo logins, one per role, fetched from the server.
+   *
+   * They are deliberately NOT a constant in this file: they are working
+   * accounts and both repositories are public, so a credential committed to
+   * web/src is published the moment it is pushed — there is a test that fails
+   * the build over exactly that. /api/auth/demo-accounts serves the single
+   * copy that already lives in app/seed.py, and returns [] when the server
+   * has demo_accounts_enabled off, in which case no buttons render.
+   */
+  const [demoAccounts, setDemoAccounts] = useState<DemoAccount[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    api.get<DemoAccount[]>("/api/auth/demo-accounts")
+      .then((rows) => { if (alive) setDemoAccounts(rows); })
+      .catch(() => { if (alive) setDemoAccounts([]); });
+    return () => { alive = false; };
+  }, []);
 
   const shouldReduceMotion = useReducedMotion();
 
@@ -119,6 +147,14 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       return;
     }
 
+    await signIn(cleanEmail, password);
+  }
+
+  /**
+   * The one sign-in path — used by the form and by the role buttons alike, so
+   * a demo sign-in is an ordinary sign-in and gets no shortcut of its own.
+   */
+  async function signIn(cleanEmail: string, pw: string) {
     setBusy(true);
     try {
       const res = await api.post<{
@@ -128,7 +164,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
         full_name: string;
         user_id: number;
         email?: string;
-      }>("/api/auth/login", { email: cleanEmail, password });
+      }>("/api/auth/login", { email: cleanEmail, password: pw });
 
       // One form, two audiences. The server derives the scope from the account,
       // so a customer signs in here with their own credentials and lands in the
@@ -285,6 +321,43 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   New accounts are created as a <strong>Sales Rep</strong>. Approver
                   and admin access is granted by an administrator, never claimed here.
                 </p>
+              </motion.div>
+            )}
+
+            {/* One-click sign-in per role, for the demo.
+                Renders only when the server offers the accounts, so nothing
+                appears in a deployment with demo_accounts_enabled off — and
+                each button goes through the ordinary /api/auth/login, so
+                there is no second, weaker way into the app. */}
+            {activeTab === "signin" && demoAccounts.length > 0 && (
+              <motion.div variants={itemVariants} className="mb-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 text-center">
+                  Or sign in as
+                </p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {demoAccounts.map((acct) => (
+                    <button
+                      key={acct.role}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        // Fill the form too, so it is visible which account
+                        // was used rather than looking like a magic bypass.
+                        setEmail(acct.email);
+                        setPassword(acct.password);
+                        setError(null);
+                        void signIn(acct.email, acct.password);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        acct.scope === "portal"
+                          ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300"
+                      }`}
+                    >
+                      {acct.label}
+                    </button>
+                  ))}
+                </div>
               </motion.div>
             )}
 
