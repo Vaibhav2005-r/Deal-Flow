@@ -33,13 +33,14 @@ interface DemoAccount {
   scope: string;
 }
 
-type RoleKey = "rep" | "manager" | "finance" | "admin";
+type RoleKey = "rep" | "manager" | "finance" | "admin" | "portal";
 
 const ROLES: { id: RoleKey; label: string; desc: string }[] = [
   { id: "rep", label: "Sales Rep", desc: "Quoting, customers & catalog" },
   { id: "manager", label: "Manager", desc: "Discounts & approval chain" },
   { id: "finance", label: "Finance", desc: "Invoicing, payments & ledger" },
   { id: "admin", label: "Admin", desc: "Configuration & system governance" },
+  { id: "portal", label: "Customer", desc: "Quotation review & negotiation" },
 ];
 
 export default function Login({ onLogin }: { onLogin: () => void }) {
@@ -312,7 +313,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
             </motion.div>
 
             {/* Role Selector Pills */}
-            <motion.div variants={itemVariants} className="grid grid-cols-4 gap-1 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
+            <motion.div variants={itemVariants} className="grid grid-cols-5 gap-1 mb-3.5 p-1 bg-slate-100/80 rounded-xl">
               {ROLES.map((roleItem) => {
                 const isSelected = selectedRole === roleItem.id;
                 return (
@@ -343,6 +344,11 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                 {activeTab === "signin" ? (
                   <>
                     Sign in with <strong className="text-slate-700 font-medium">{ROLES.find((r) => r.id === selectedRole)?.label}</strong> privileges
+                  </>
+                ) : selectedRole === "portal" ? (
+                  <>
+                    Customer accounts are created from the{" "}
+                    <a href="/portal/login" className="font-semibold text-[#3b5bf6] hover:underline">Customer Portal</a>
                   </>
                 ) : (
                   <>
@@ -521,8 +527,8 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                 className="space-y-3.5"
                 autoComplete="off"
               >
-                {/* Full Name (Create Account only) */}
-                {activeTab === "create" && (
+                {/* Full Name (Create Account only, not for portal) */}
+                {activeTab === "create" && selectedRole !== "portal" && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
@@ -552,6 +558,27 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   </motion.div>
                 )}
 
+                {/* Portal: redirect to Customer Portal signup */}
+                {activeTab === "create" && selectedRole === "portal" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-center"
+                  >
+                    <p className="text-xs text-blue-800 mb-2">
+                      Customer accounts require a linked company profile.
+                    </p>
+                    <a
+                      href="/portal/login"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#1d72f2] hover:bg-[#155ecc] text-white rounded-lg text-xs font-semibold transition-colors shadow-md"
+                    >
+                      Go to Customer Portal Sign Up →
+                    </a>
+                  </motion.div>
+                )}
+
                 {/* Work Email */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -567,12 +594,15 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                       type="email"
                       name="dealflow_work_email"
                       id="dealflow_work_email"
-                      required
+                      required={!(activeTab === "create" && selectedRole === "portal")}
+                      disabled={activeTab === "create" && selectedRole === "portal"}
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter your work email"
                       autoComplete="off"
-                      className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
+                      className={`w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 ${
+                        activeTab === "create" && selectedRole === "portal" ? "opacity-40 cursor-not-allowed" : ""
+                      }`}
                     />
                   </div>
                 </div>
@@ -592,12 +622,15 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                       type={showPassword ? "text" : "password"}
                       name="dealflow_work_password"
                       id="dealflow_work_password"
-                      required
+                      required={!(activeTab === "create" && selectedRole === "portal")}
+                      disabled={activeTab === "create" && selectedRole === "portal"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder={activeTab === "create" ? "Create a password" : "Enter your password"}
                       autoComplete="new-password"
-                      className="w-full pl-9 pr-9 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 font-mono"
+                      className={`w-full pl-9 pr-9 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200 font-mono ${
+                        activeTab === "create" && selectedRole === "portal" ? "opacity-40 cursor-not-allowed" : ""
+                      }`}
                     />
                     <button
                       type="button"
@@ -666,11 +699,13 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                 {/* Animated Submit Button with Hover, Tap & Loading State */}
                 <motion.button
                   type="submit"
-                  disabled={busy}
+                  disabled={busy || (activeTab === "create" && selectedRole === "portal")}
                   whileHover={shouldReduceMotion || busy ? {} : { scale: 1.015 }}
                   whileTap={shouldReduceMotion || busy ? {} : { scale: 0.985 }}
                   transition={{ duration: 0.15 }}
-                  className="w-full bg-[#3b5bf6] hover:bg-[#2d4de6] active:bg-[#2040d6] text-white rounded-lg py-2.5 px-4 text-xs font-semibold transition-colors shadow-md shadow-[#3b5bf6]/25 hover:shadow-lg hover:shadow-[#3b5bf6]/35 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer group"
+                  className={`w-full bg-[#3b5bf6] hover:bg-[#2d4de6] active:bg-[#2040d6] text-white rounded-lg py-2.5 px-4 text-xs font-semibold transition-colors shadow-md shadow-[#3b5bf6]/25 hover:shadow-lg hover:shadow-[#3b5bf6]/35 disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer group ${
+                    activeTab === "create" && selectedRole === "portal" ? "hidden" : ""
+                  }`}
                 >
                   {busy ? (
                     <motion.div
@@ -688,7 +723,9 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                     <span className="flex items-center gap-1.5">
                       <span>
                         {activeTab === "signin"
-                          ? `Sign In as ${ROLES.find((r) => r.id === selectedRole)?.label || ""}`
+                          ? selectedRole === "portal"
+                            ? "Sign In as Customer →"
+                            : `Sign In as ${ROLES.find((r) => r.id === selectedRole)?.label || ""}`
                           : `Create ${ROLES.find((r) => r.id === selectedRole)?.label || ""} Account`}
                       </span>
                       <svg

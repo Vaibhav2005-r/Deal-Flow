@@ -226,7 +226,15 @@ export default function FinanceHome() {
             <svg className="w-3 h-3 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18" />
             </svg>
-            <span>+14.8% vs last month</span>
+            <span>{(() => {
+              const trendSeries = trend.data?.series ?? [];
+              if (trendSeries.length < 2) return "Current period";
+              const curr = Number(trendSeries[trendSeries.length - 1]?.revenue ?? 0);
+              const prev = Number(trendSeries[trendSeries.length - 2]?.revenue ?? 0);
+              if (prev === 0) return "First period";
+              const pct = ((curr - prev) / prev * 100).toFixed(1);
+              return `${Number(pct) >= 0 ? "+" : ""}${pct}% vs prior period`;
+            })()}</span>
           </div>
         </div>
 
@@ -263,7 +271,7 @@ export default function FinanceHome() {
             {formatLakhs(displayOutstandingAmount)}
           </div>
           <div className="mt-2 text-[11px] text-slate-600 font-medium bg-rose-50/80 border border-rose-200/70 px-2.5 py-0.5 rounded-full">
-            <span className="font-bold text-slate-800">{pendingInvoices.length || 18}</span> invoices due for collection
+            <span className="font-bold text-slate-800">{pendingInvoices.length}</span> invoices due for collection
           </div>
         </div>
 
@@ -566,9 +574,9 @@ export default function FinanceHome() {
               >
                 <div className="text-[11px] font-semibold text-emerald-800">Healthy</div>
                 <div className="text-lg font-bold text-emerald-900 mt-0.5">
-                  {quotes.length > 0 ? quotes.filter((q) => Number(q.risk_score ?? 0) < 20).length : 14}
+                  {dealHealth.filter((d) => !d.alert && !d.payment_overdue).length}
                 </div>
-                <p className="text-[10px] text-emerald-700">Low Risk</p>
+                <p className="text-[10px] text-emerald-700">Settled / Paid</p>
               </div>
 
               <div
@@ -577,9 +585,9 @@ export default function FinanceHome() {
               >
                 <div className="text-[11px] font-semibold text-amber-800">Warning</div>
                 <div className="text-lg font-bold text-amber-900 mt-0.5">
-                  {dealHealth.filter((d) => d.discount_anomaly).length || 5}
+                  {dealHealth.filter((d) => !d.alert && (d.invoice_status === "unpaid" || d.discount_anomaly || d.stalled)).length}
                 </div>
-                <p className="text-[10px] text-amber-700">Discount Outlier</p>
+                <p className="text-[10px] text-amber-700">Unpaid / Inactive</p>
               </div>
 
               <div
@@ -588,9 +596,9 @@ export default function FinanceHome() {
               >
                 <div className="text-[11px] font-semibold text-rose-800">Critical</div>
                 <div className="text-lg font-bold text-rose-900 mt-0.5">
-                  {dealHealth.filter((d) => d.alert).length || 3}
+                  {dealHealth.filter((d) => d.alert || d.payment_overdue).length}
                 </div>
-                <p className="text-[10px] text-rose-700">Sentinel Alert</p>
+                <p className="text-[10px] text-rose-700">Overdue / Alert</p>
               </div>
             </div>
           </motion.section>

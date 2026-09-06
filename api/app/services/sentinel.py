@@ -3,24 +3,31 @@
 TIER 1 — statistical: proposals and alerts only.
 Every call to Sentinel is logged through ``run_agent`` to ``decision_log`` (§4, §8).
 It never mutates quotation state, lines, or monetary amounts.
+
+As of v1.2, Sentinel scans only quotations that have at least one invoice
+record — deal health is an *invoiced* pipeline concern.  Pre-invoice
+quotations (drafts, sent, negotiating) are outside its scope.
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domain.sentinel import decide as sentinel_decide
 from app.domain.types import SentinelSnapshot
-from app.models.enums import QuoteState, Tier
+from app.models.enums import InvoiceStatus, QuoteState, Tier
 from app.models.tables import (
+    CreditNote,
     Customer,
     FulfillmentLine,
     FulfillmentPlan,
+    Invoice,
+    Payment,
     Quotation,
     QuoteLine,
     User,
@@ -28,6 +35,9 @@ from app.models.tables import (
 from app.services.decision_log import run_agent
 
 TIER_MAP = {Tier.BRONZE: 1.0, Tier.SILVER: 2.0, Tier.GOLD: 3.0}
+
+#: An invoice with outstanding balance older than this is considered overdue.
+OVERDUE_DAYS = 30
 
 
 def _fit_isolation_forest(session: Session) -> Any:
@@ -56,6 +66,96 @@ def _fit_isolation_forest(session: Session) -> Any:
         return clf
     except Exception:
         return None
+
+
+def _invoice_metrics(session: Session, quotation: Quotation) -> dict:
+    """Compute real-time invoice metrics for a quotation from the invoice,
+    payment, and credit_note tables."""
+    is_deal_paid = (
+        quotation.state == QuoteState.PAID
+        or str(quotation.state).upper() in ("PAID", "CLOSED")
+    )
+
+    invoices = session.scalars(
+        select(Invoice).where(Invoice.quotation_id == quotation.id)
+    ).all()
+
+    if not invoices:
+        return {
+            "invoice_count": 0,
+            "total_invoiced": "0.00",
+            "total_paid": "0.00",
+            "total_credited": "0.00",
+            "total_outstanding": "0.00",
+            "invoice_status": "paid" if is_deal_paid else "none",
+            "overdue": False,
+            "days_overdue": 0,
+            "oldest_unpaid_date": None,
+        }
+
+    total_invoiced = Decimal(0)
+    total_paid = Decimal(0)
+    total_credited = Decimal(0)
+    oldest_unpaid_date: date | None = None
+    all_paid = True
+    today = datetime.now(timezone.utc).date()
+
+    for inv in invoices:
+        total_invoiced += inv.total
+
+        inv_paid = sum(
+            session.scalars(
+                select(Payment.amount).where(Payment.invoice_id == inv.id)
+            ).all(),
+            Decimal(0),
+        )
+        inv_credited = sum(
+            session.scalars(
+                select(CreditNote.amount).where(CreditNote.invoice_id == inv.id)
+            ).all(),
+            Decimal(0),
+        )
+        total_paid += inv_paid
+        total_credited += inv_credited
+
+        outstanding = inv.total - inv_paid - inv_credited
+        if outstanding > 0:
+            all_paid = False
+            inv_date = inv.created_at.date() if inv.created_at else today
+            if oldest_unpaid_date is None or inv_date < oldest_unpaid_date:
+                oldest_unpaid_date = inv_date
+
+    total_outstanding = max(Decimal(0), total_invoiced - total_paid - total_credited)
+
+    # Determine overdue (closed/PAID deals are never overdue)
+    days_overdue = 0
+    overdue = False
+    if is_deal_paid:
+        all_paid = True
+        total_outstanding = Decimal(0)
+    elif oldest_unpaid_date and total_outstanding > 0:
+        days_overdue = (today - oldest_unpaid_date).days
+        overdue = days_overdue > OVERDUE_DAYS
+
+    # Aggregate invoice status
+    if all_paid or is_deal_paid:
+        inv_status = "paid"
+    elif overdue:
+        inv_status = "overdue"
+    else:
+        inv_status = "unpaid"
+
+    return {
+        "invoice_count": len(invoices),
+        "total_invoiced": str(total_invoiced.quantize(Decimal("0.01"))),
+        "total_paid": str(total_paid.quantize(Decimal("0.01"))),
+        "total_credited": str(total_credited.quantize(Decimal("0.01"))),
+        "total_outstanding": str(total_outstanding.quantize(Decimal("0.01"))),
+        "invoice_status": inv_status,
+        "overdue": overdue,
+        "days_overdue": days_overdue,
+        "oldest_unpaid_date": str(oldest_unpaid_date) if oldest_unpaid_date else None,
+    }
 
 
 def build_sentinel_snapshot(
@@ -171,6 +271,31 @@ def assess_quotation(
     customer = session.get(Customer, quotation.customer_id)
     rep = session.get(User, quotation.rep_id) if quotation.rep_id else None
 
+    # Real-time invoice metrics from database
+    inv_metrics = _invoice_metrics(session, quotation)
+
+    is_deal_paid = (
+        quotation.state == QuoteState.PAID
+        or str(quotation.state).upper() in ("PAID", "CLOSED")
+    )
+    payment_overdue = inv_metrics["overdue"] if not is_deal_paid else False
+    if is_deal_paid:
+        # A closed deal never alerts on stall or overdue payment
+        alert = bool(decision.output.get("discount_anomaly")) and decision.output.get("alert", False)
+    else:
+        alert = decision.output["alert"] or payment_overdue
+
+    # Extend explanation with invoice findings
+    explanation = list(decision.explanation)
+    if payment_overdue:
+        explanation.append(
+            f"Payment overdue: oldest unpaid invoice is {inv_metrics['days_overdue']} "
+            f"days old (>{OVERDUE_DAYS}d threshold), outstanding "
+            f"₹{inv_metrics['total_outstanding']}."
+        )
+    if inv_metrics["invoice_status"] == "paid":
+        explanation.append("All invoices are fully paid — no collection risk.")
+
     return {
         "quotation_id": quotation.id,
         "customer_id": quotation.customer_id,
@@ -180,18 +305,26 @@ def assess_quotation(
         "rep_name": rep.full_name if rep else "Unassigned",
         "state": str(quotation.state),
         "version": quotation.version,
-        "alert": decision.output["alert"],
+        "alert": alert,
         "stalled": decision.output["stalled"],
         "discount_anomaly": decision.output["discount_anomaly"],
         "robust_z": decision.output["robust_z"],
         "history_source": decision.output["history_source"],
         "delivery_slippage": decision.output["delivery_slippage"],
         "isolation_forest_outlier": decision.output["isolation_forest_outlier"],
+        "payment_overdue": payment_overdue,
         "votes": decision.output["votes"],
-        "explanation": decision.explanation,
+        "explanation": explanation,
         "last_activity_at": str(snap.last_activity_at),
         "days_inactive": (snap.as_of - snap.last_activity_at).days,
         "discount_pct": snap.discount_pct,
+        # Invoice data from database
+        "invoice_count": inv_metrics["invoice_count"],
+        "total_invoiced": inv_metrics["total_invoiced"],
+        "total_paid": inv_metrics["total_paid"],
+        "total_outstanding": inv_metrics["total_outstanding"],
+        "invoice_status": inv_metrics["invoice_status"],
+        "days_overdue": inv_metrics["days_overdue"],
         "tier": 1,
         "writes_state": False,
     }
@@ -201,11 +334,24 @@ def assess_all_quotations(
     session: Session,
     actor_id: int | None = None,
     as_of: date | None = None,
+    invoices_only: bool = False,
 ) -> list[dict]:
-    """Runs Sentinel on all quotations, sorting flagged alerts to the top."""
-    quotes = session.scalars(
-        select(Quotation).order_by(Quotation.id.desc())
-    ).all()
+    """Runs Sentinel on quotations, sorting flagged alerts to the top.
+
+    By default evaluates all active quotations and enriches them with real-time
+    invoice metrics. When ``invoices_only=True``, scans only quotations that have
+    at least one invoice record.
+    """
+    query = select(Quotation).order_by(Quotation.id.desc())
+    if invoices_only:
+        invoiced_ids = (
+            select(Invoice.quotation_id)
+            .distinct()
+            .subquery()
+        )
+        query = query.where(Quotation.id.in_(select(invoiced_ids.c.quotation_id)))
+
+    quotes = session.scalars(query).all()
 
     clf = _fit_isolation_forest(session)
     results = [

@@ -53,11 +53,12 @@ def list_deal_health(
     page: int | None = Query(default=None, ge=1),
     page_size: int | None = Query(default=None, ge=1, le=500),
     alerts_only: bool = False,
+    invoices_only: bool = False,
     session: Session = Depends(get_session),
     user: User = Depends(current_internal_user),
 ) -> list[dict]:
-    """Runs Sentinel on all quotations and returns deal health assessments with alert flags."""
-    all_deals = assess_all_quotations(session, actor_id=user.id)
+    """Runs Sentinel on quotations and returns deal health assessments with alert flags."""
+    all_deals = assess_all_quotations(session, actor_id=user.id, invoices_only=invoices_only)
     if alerts_only:
         all_deals = [d for d in all_deals if d.get("alert")]
 

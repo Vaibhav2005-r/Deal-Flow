@@ -324,11 +324,20 @@ export interface DealHealthAssessment {
   history_source: string;
   delivery_slippage: boolean;
   isolation_forest_outlier: boolean;
+  payment_overdue?: boolean;
   votes: number;
   explanation: string[];
   last_activity_at: string;
   days_inactive: number;
   discount_pct: number;
+  invoice_count?: number;
+  total_invoiced?: string;
+  total_paid?: string;
+  total_outstanding?: string;
+  invoice_status?: string;
+  days_overdue?: number;
+  tier?: number;
+  writes_state?: boolean;
 }
 
 export interface RepPerformance {

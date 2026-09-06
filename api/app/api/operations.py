@@ -94,7 +94,7 @@ def dashboard(
     at_risk = []
     try:
         from app.services.sentinel import assess_all_quotations
-        at_risk = [row for row in assess_all_quotations(session) if row.get("alert")]
+        at_risk = [row for row in assess_all_quotations(session) if row.get("alert") and row.get("state") != "PAID"]
     except Exception:
         at_risk = []
 
