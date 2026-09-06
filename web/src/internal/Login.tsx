@@ -64,11 +64,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
       .then((rows) => {
         if (alive) {
           setDemoAccounts(rows);
-          const initial = rows.filter((a) => a.role === selectedRole);
-          if (initial.length > 0) {
-            setEmail((prev) => prev || initial[0].email);
-            setPassword((prev) => prev || initial[0].password || "");
-          }
         }
       })
       .catch(() => { if (alive) setDemoAccounts([]); });
@@ -109,17 +104,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    // Auto-select first account for this role if on sign in and current email isn't for this role
-    if (activeTab === "signin") {
-      const matches = demoAccounts.filter((a) => a.role === role);
-      if (matches.length > 0) {
-        setEmail(matches[0].email);
-        setPassword(matches[0].password || "");
-      } else {
-        setEmail("");
-        setPassword("");
-      }
-    }
   };
 
   const handleTabChange = (tab: "signin" | "create") => {
@@ -127,20 +111,6 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
     setError(null);
     setSuccessMessage(null);
     setToastMessage(null);
-    if (tab === "signin") {
-      const matches = demoAccounts.filter((a) => a.role === selectedRole);
-      if (matches.length > 0) {
-        setEmail(matches[0].email);
-        setPassword(matches[0].password || "");
-      } else {
-        setEmail("");
-        setPassword("");
-      }
-    } else {
-      setEmail("");
-      setPassword("");
-      setFullName("");
-    }
   };
 
   async function submit(e: React.FormEvent) {

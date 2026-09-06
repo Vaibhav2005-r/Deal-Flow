@@ -97,6 +97,7 @@ export default function InternalRouter() {
   const user = currentUserData || getCurrentUser();
   const roleName = user?.role ? String(user.role).toLowerCase() : getInternalRole();
   const isFinance = roleName.includes("finance") || isFinanceUser();
+  const isAdmin = roleName.includes("admin");
 
   const designation = getRoleDesignation(roleName);
 
@@ -362,26 +363,27 @@ export default function InternalRouter() {
                   </div>
 
                   {/* §B1 workspace actions. Reload pulls fresh pricing, stock and
-                      approval state on demand: the screens already poll, but a rep
-                      about to quote wants certainty rather than a wait. */}
-                  <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => window.location.reload()}
-                      data-testid="reload-data"
-                      title="Refresh pricing, stock and approval data"
-                      className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
-                    >
-                      Reload data
-                    </button>
-                    <NavLink
-                      to="/operations"
-                      data-testid="go-to-backend"
-                      className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer text-center"
-                    >
-                      Back-end
-                    </NavLink>
-                  </div>
+                      approval state on demand — for admin users only. */}
+                  {isAdmin && (
+                    <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        data-testid="reload-data"
+                        title="Refresh pricing, stock and approval data"
+                        className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer"
+                      >
+                        Reload data
+                      </button>
+                      <NavLink
+                        to="/operations"
+                        data-testid="go-to-backend"
+                        className="py-2 px-3 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold cursor-pointer text-center"
+                      >
+                        Back-end
+                      </NavLink>
+                    </div>
+                  )}
 
                   {/* Actions */}
                   <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
