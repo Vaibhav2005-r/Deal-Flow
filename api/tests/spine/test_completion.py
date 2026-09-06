@@ -15,6 +15,7 @@ from app.models.tables import FulfillmentLine, Outbox, Stock, Subscription
 from tests.spine.conftest import auth
 from tests.spine.test_second_ring import drive_to_confirmed, hybrid_quote
 from tests.spine.test_spine import _gold_customer, _product, build_over_ceiling_quote
+from app.settings import settings
 
 
 # --------------------------------------------------------------------------
@@ -37,9 +38,15 @@ def test_signup_creates_an_account_and_signs_in(client):
     assert client.get("/api/quotes", headers=auth(body["token"])).status_code == 200
 
 
-def test_signup_cannot_claim_an_approver_role(client):
+def test_signup_cannot_claim_an_approver_role(client, monkeypatch):
     """Anyone could otherwise mint themselves a manager and approve their own
-    over-ceiling quotes."""
+    over-ceiling quotes.
+
+    The sign-up form now has a role picker, so this holds with the demo flag
+    off — the configuration a real deployment runs. See
+    tests/spine/test_roles.py for both sides of that switch.
+    """
+    monkeypatch.setattr(settings, "demo_accounts_enabled", False)
     body = client.post("/api/auth/signup", json={
         "email": "wannabe@dealflow.example",
         "full_name": "Wannabe Manager",

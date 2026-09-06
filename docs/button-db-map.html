@@ -1,0 +1,526 @@
+<title>DealFlow360 Button-to-Database Map</title>
+<style>
+  :root{
+    --ink:#0f172a; --mid:#475569; --soft:#64748b; --line:#e2e8f0;
+    --bg:#ffffff; --panel:#f8fafc;
+    --read:#0369a1; --readbg:#e0f2fe; --write:#9a3412; --writebg:#ffedd5;
+    --accent:#3b5bf6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:11px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .page{max-width:1080px;margin:0 auto;padding:28px 30px 40px;}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.02em}
+  h2{font-size:15px;margin:30px 0 10px;padding-bottom:6px;
+     border-bottom:2px solid var(--ink);letter-spacing:-.01em}
+  h3{font-size:12.5px;margin:20px 0 7px;color:var(--ink)}
+  .sub{color:var(--soft);font-size:12px;margin:0 0 18px}
+  p{margin:0 0 9px;color:var(--mid);max-width:80ch}
+  code{font:10px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+       background:var(--panel);border:1px solid var(--line);
+       border-radius:3px;padding:1px 4px;white-space:nowrap;color:var(--ink)}
+  table{width:100%;border-collapse:collapse;margin:8px 0 4px;
+        font-size:10.5px;table-layout:fixed}
+  th{text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.06em;
+     color:var(--soft);border-bottom:1px solid var(--line);padding:5px 6px;font-weight:700}
+  td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top;
+     word-wrap:break-word;overflow-wrap:anywhere}
+  tr:last-child td{border-bottom:none}
+  .chip{display:inline-block;font:9.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+        border-radius:3px;padding:1px 5px;margin:1px 3px 1px 0;white-space:nowrap}
+  .r{background:var(--readbg);color:var(--read)}
+  .w{background:var(--writebg);color:var(--write)}
+  .none{color:#cbd5e1}
+  .k{display:inline-block;font-size:8.5px;font-weight:800;letter-spacing:.05em;
+     border-radius:3px;padding:1px 5px;text-transform:uppercase}
+  .k-call{background:#dcfce7;color:#15803d}
+  .k-nav{background:#e0e7ff;color:#4338ca}
+  .k-ui{background:#f1f5f9;color:#64748b}
+  .screen{border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+          margin:12px 0;break-inside:avoid}
+  .screen h3{margin-top:0}
+  .file{font:9.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--soft);
+        margin:-4px 0 8px}
+  .loads{background:var(--panel);border-radius:5px;padding:7px 9px;margin:0 0 9px;
+         font-size:10px;color:var(--mid)}
+  .loads b{color:var(--ink);font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+  .note{color:var(--soft);font-size:9.5px;display:block;margin-top:2px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;background:var(--panel);
+          border:1px solid var(--line);border-radius:8px;padding:10px 13px;margin:14px 0 20px}
+  .legend div{font-size:10px;color:var(--mid)}
+  .method{font-weight:700;white-space:nowrap;font-size:9.5px}
+  .callout{border-left:3px solid var(--accent);background:var(--panel);
+           padding:9px 12px;margin:12px 0;border-radius:0 6px 6px 0;font-size:10.5px}
+  .callout b{color:var(--ink)}
+  @page{size:A4;margin:12mm 10mm}
+  @media print{
+    .screen,tr,h2,h3{break-inside:avoid}
+    h2{break-before:auto}
+  }
+</style>
+<div class="page">
+<h1>DealFlow360 — Button-to-Database Map</h1>
+<p class="sub">Every control in the web client, the API call behind it, and the tables that call reads and writes · generated 2026-09-06</p>
+<div class="callout">
+<b>How this was produced.</b> The read/write columns are not inferred from reading code. A SQL listener was attached to SQLAlchemy and the full 502-test suite was run, recording every statement each endpoint actually issued; the seventeen endpoints the suite never exercised were then driven directly. All <b>83</b> routes are covered by observed SQL. Controls were extracted from the JSX and each handler traced to its request, then checked against the route list — every endpoint named here exists.
+</div>
+<div class="legend">
+<div><span class="chip r">table</span> read from</div>
+<div><span class="chip w">table</span> written to</div>
+<div><span class="k k-call">DB</span> issues a request</div>
+<div><span class="k k-nav">nav</span> opens another screen</div>
+<div><span class="k k-ui">UI</span> client-side only</div>
+</div>
+<p>A note on reads: a write endpoint reads a good deal before it writes — the quote, its lines, the customer's tier, the discount policy — because the domain engines are given a full snapshot to score against. Those reads are listed, so a row with many read chips and one write chip is normal rather than surprising.</p>
+<h2>Part 1 · Screen by screen</h2>
+<div class="screen">
+<h3>Sign in  (/login)</h3>
+<div class="file">web/src/internal/Login.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/auth/demo-accounts</code><br><span class="chip r">customer</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Sign In (submit)</b><span class="note">Reads the account, then the app calls GET /api/me for capabilities.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/auth/login</code></td><td><span class="chip r">user</span></td></tr>
+<tr><td><b>Create Account (submit, Create tab)</b><span class="note">Always creates a rep; the requested role is ignored.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/auth/register</code></td><td><span class="chip w">user</span></td></tr>
+<tr><td><b>Sales Rep / Manager / Finance / Admin / Customer</b><span class="note">Demo buttons. Credentials come from the server, then the ordinary login.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/auth/demo-accounts</code><br><code>POST /api/auth/login</code></td><td><span class="chip r">customer</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Create Account / Sign In (tab switch)</b><span class="note">Switches form mode.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Show / hide password</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Forgot password?</b><span class="note">Shows a notice; no request.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Customer Portal</b><span class="note">Links to /portal/login.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Customer portal sign in  (/portal/login)</h3>
+<div class="file">web/src/portal/PortalLogin.tsx</div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Sign In to Customer Portal (submit)</b><span class="note">Rejected unless the account&#x27;s scope is portal.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/auth/login</code></td><td><span class="chip r">user</span></td></tr>
+<tr><td><b>Create Customer Account (submit)</b><span class="note">Creates the login and its customer record together.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/auth/portal-signup</code></td><td><span class="chip w">customer</span><span class="chip w">user</span></td></tr>
+<tr><td><b>Sign In / Sign Up (tab switch)</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Show / hide password</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Switch to Internal Employee Console</b><span class="note">Links to /login.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Home — rep &amp; manager  (/)</h3>
+<div class="file">web/src/internal/Dashboard.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/dashboard</code><br><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">decision_log</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>+ New Quotation</b><span class="note">Opens /build.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>View Approvals</b><span class="note">Opens /approvals. Hidden without view_approvals.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>At-risk deal row</b><span class="note">Opens /health.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Home — finance  (/)</h3>
+<div class="file">web/src/internal/FinanceHome.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/dashboard</code> <code>GET /api/reports/revenue-trend</code> <code>GET /api/invoices</code> <code>GET /api/approvals</code> <code>GET /api/subscriptions</code> <code>GET /api/deal-health</code> <code>GET /api/quotes</code><br><span class="chip r">approval_request</span><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span><span class="chip w">decision_log</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Refresh</b><span class="note">Re-runs every load on the screen.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/invoices</code><br><code>GET /api/approvals</code><br><code>GET /api/subscriptions</code><br><code>GET /api/deal-health</code><br><code>GET /api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span><span class="chip w">decision_log</span></td></tr>
+<tr><td><b>Monthly / Quarterly / Yearly</b><span class="note">Re-queries the trend for that period.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reports/revenue-trend</code></td><td><span class="chip r">invoice</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Review  ·  View all  ·  Inspect</b><span class="note">Open /approvals, /invoices, /health.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Review Approvals / Ledger Invoices / Revenue Reports / Audit Registry</b><span class="note">Shortcut tiles to /approvals, /invoices, /reports, /reliability.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Build Quote  (/build)</h3>
+<div class="file">web/src/internal/QuoteBuilder.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/customers</code> <code>GET /api/products</code> <code>GET /api/discount-policies</code> <code>GET /api/quotes/{id}</code> <code>GET /api/quotes/{id}/messages</code> <code>GET /api/quotes/{id}/suggestions</code><br><span class="chip r">approval_request</span><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">portal_message</span><span class="chip r">product</span><span class="chip r">product_affinity</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">stock</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">decision_log</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Create quote</b><span class="note">Opens a DRAFT for the chosen customer.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Start another</b><span class="note">Clears the form; no request.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Add line</b><span class="note">The sanctioned mutation path: re-scores and voids live approvals.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/lines</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Delete (line row)</b></td><td><span class="k k-call">DB</span></td><td><code>DELETE /api/quotes/{id}/lines/{line_id}</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Apply to all lines</b><span class="note">Sets one discount across every line, then re-scores.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/order-discount</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Confirm &amp; score</b><span class="note">Runs BDRS and routes to the approval chain.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/confirm</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">idempotency_key</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Send to Customer Portal</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/send-to-portal</code></td><td><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Accept Counter-Offer</b><span class="note">Applies the customer&#x27;s counter as a line edit and re-scores.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/accept-counter</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">portal_message</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Send Reply (submit)</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/messages</code></td><td><span class="chip r">quotation</span><span class="chip r">user</span><span class="chip w">portal_message</span></td></tr>
+<tr><td><b>Add to quote (upsell)</b><span class="note">Same path as Add line.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{id}/lines</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>Dismiss (upsell)</b><span class="note">Hides the suggestion for this session.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>View all quotes</b><span class="note">Opens /quotes.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Quotations  (/quotes)</h3>
+<div class="file">web/src/internal/QuoteList.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/quotes</code><br><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Showing assigned / all accounts</b><span class="note">Re-queries with all_quotes.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Board / table view</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Search, clear search</b><span class="note">Server-side filter.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Quote card / Review</b><span class="note">Opens /quotes/{id}.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next / page number</b><span class="note">Server-side paging.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Approvals  (/approvals)</h3>
+<div class="file">web/src/internal/Approvals.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/approvals</code><br><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Approve Quotation</b><span class="note">Advances the chain; may transition the quote to APPROVED.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/approve</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">idempotency_key</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Return for Revision</b><span class="note">Requires a reason; sends the quote back to DRAFT.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/return</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Reject Quotation</b><span class="note">Requires a reason.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/reject</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Review Breakdown</b><span class="note">Expands the row; data already loaded.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Pending / Returned / Approved tabs</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/approvals</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Prev / Next</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/approvals</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Fulfillment  (/fulfillment)</h3>
+<div class="file">web/src/internal/FulfillmentList.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/warehouses</code> <code>GET /api/fulfillment/pending</code> <code>GET /api/fulfillment/stock</code><br><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip r">warehouse</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Warehouse filter</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/fulfillment/stock</code></td><td><span class="chip r">product</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip r">warehouse</span></td></tr>
+<tr><td><b>Order row / Manage Split</b><span class="note">Opens /pipeline for that quote.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/fulfillment/pending</code><br><code>GET /api/fulfillment/stock</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip r">warehouse</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Pipeline  (/pipeline)</h3>
+<div class="file">web/src/internal/Pipeline.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/quotes</code> <code>GET /api/quotes/{id}</code> <code>GET /api/quotes/{id}/fulfillment</code> <code>GET /api/quotes/{id}/invoices</code> <code>GET /api/quotes/{id}/amount-due</code> <code>GET /api/quotes/{id}/billing-detail</code> <code>GET /api/fulfillment/stock</code><br><span class="chip r">approval_request</span><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">invoice_line</span><span class="chip r">payment</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">stock</span><span class="chip r">subscription</span><span class="chip r">user</span><span class="chip r">warehouse</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>1. Send to portal</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/send-to-portal</code></td><td><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>2. Customer confirm</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/customer-confirm</code></td><td><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Accept customer counter</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/accept-counter</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">portal_message</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td><b>3. Plan fulfillment</b><span class="note">Allocates stock and reserves it.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/plan-fulfillment</code></td><td><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip r">warehouse</span><span class="chip w">decision_log</span><span class="chip w">fulfillment_line</span><span class="chip w">fulfillment_plan</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">stock</span></td></tr>
+<tr><td><b>4. Generate invoices</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/generate-invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">subscription_plan</span><span class="chip r">user</span><span class="chip w">decision_log</span><span class="chip w">invoice</span><span class="chip w">invoice_line</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">subscription</span></td></tr>
+<tr><td><b>5. Record payment</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/payments</code></td><td><span class="chip r">credit_note</span><span class="chip r">user</span><span class="chip w">invoice</span><span class="chip w">outbox</span><span class="chip w">payment</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Check Inbound Consolidation</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/fulfillment/consolidate/{product_id}</code></td><td><span class="chip r">fulfillment_line</span><span class="chip r">quotation</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip w">outbox</span></td></tr>
+<tr><td><b>Manual Override Split / Cancel</b><span class="note">Opens the override editor.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Apply Override &amp; Recalculate Split</b><span class="note">Re-reserves stock against the chosen warehouses.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/fulfillment/override</code></td><td><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip r">warehouse</span><span class="chip w">fulfillment_line</span><span class="chip w">fulfillment_plan</span><span class="chip w">outbox</span><span class="chip w">stock</span></td></tr>
+<tr><td><b>Pause / Resume subscription</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/subscription/pause</code></td><td><span class="chip r">user</span><span class="chip w">subscription</span></td></tr>
+<tr><td><b>Cancel subscription</b><span class="note">Prompts for a reason.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/quotes/{quote_id}/subscription/cancel</code></td><td><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">subscription</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Subscriptions  (/subscriptions)</h3>
+<div class="file">web/src/internal/Subscriptions.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/subscriptions</code><br><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>All / Active / Paused / Cancelled</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/subscriptions</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Prev / Next / page size</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/subscriptions</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Invoices  (/invoices)</h3>
+<div class="file">web/src/internal/Invoices.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/invoices/summary</code> <code>GET /api/invoices</code><br><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Inspect</b><span class="note">Loads lines, credits and payments.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/invoices/{invoice_id}</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">invoice_line</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td></tr>
+<tr><td><b>All / Unpaid / Paid</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/invoices</code><br><code>GET /api/invoices/summary</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Search</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Close Detail</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Deal Health  (/health)</h3>
+<div class="file">web/src/internal/HealthDashboard.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/deal-health</code><br><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">decision_log</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Refresh</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/deal-health</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">decision_log</span></td></tr>
+<tr><td><b>Filter Alerts Only</b><span class="note">Client-side filter over loaded rows.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Inspect / Close</b><span class="note">Opens the detail drawer.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Go to Quote</b><span class="note">Opens /quotes/{id}.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/deal-health</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">decision_log</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Reports  (/reports)</h3>
+<div class="file">web/src/internal/Reports.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/reports</code><br><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Period / rep / state / category filters</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reports</code></td><td><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Export CSV</b><span class="note">Streams a file; writes nothing.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reports/export</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Export Excel (.xls)</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reports/export</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Products  (/catalog)</h3>
+<div class="file">web/src/internal/Catalog.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/catalog/summary</code> <code>GET /api/catalog/products</code><br><span class="chip r">price_list</span><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>+ New Product / Cancel</b><span class="note">Opens the create form.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Save Product (submit)</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/catalog/products</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip w">product</span></td></tr>
+<tr><td><b>Inspect</b><span class="note">Loads variants and per-price-list prices.</span></td><td><span class="k k-call">DB</span></td><td><code>GET /api/catalog/products/{product_id}</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Category filter / search</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/catalog/products</code></td><td><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Close</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/catalog/products</code></td><td><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Config  (/discount-config)</h3>
+<div class="file">web/src/internal/DiscountConfig.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/admin/discount-config</code><br><span class="chip r">approval_rule</span><span class="chip r">discount_policy</span><span class="chip r">tier_policy</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Save configuration</b><span class="note">Validated first: unknown tier/category or a category above its tier cap is refused.</span></td><td><span class="k k-call">DB</span></td><td><code>PUT /api/admin/discount-config</code></td><td><span class="chip r">approval_rule</span><span class="chip r">discount_policy</span><span class="chip r">user</span><span class="chip w">tier_policy</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Ops  (/operations)</h3>
+<div class="file">web/src/internal/Operations.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/admin/warehouses</code> <code>GET /api/admin/subscription-plans</code><br><span class="chip r">stock</span><span class="chip r">subscription_plan</span><span class="chip r">user</span><span class="chip r">warehouse</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Add warehouse</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/admin/warehouses</code></td><td><span class="chip r">stock</span><span class="chip r">user</span><span class="chip w">warehouse</span></td></tr>
+<tr><td><b>Add plan</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/admin/subscription-plans</code></td><td><span class="chip r">user</span><span class="chip w">subscription_plan</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Audit  (/reliability)</h3>
+<div class="file">web/src/internal/ReliabilityPanel.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/reliability/stats</code> <code>GET /api/reliability/logs</code><br><span class="chip r">decision_log</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Refresh Log</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reliability/logs</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Replay</b><span class="note">Re-runs the recorded call and compares; appends nothing.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/reliability/replay/{log_id}</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Agent / verdict filters</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/reliability/logs</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Done / close</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Portal — My Quotations  (/portal)</h3>
+<div class="file">web/src/portal/QuoteList.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/portal/quotes</code><br><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Refresh</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/portal/quotes</code></td><td><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+<tr><td><b>Review &amp; Negotiate</b><span class="note">Opens /portal/quotes/{id}.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Prev / Next / per page</b></td><td><span class="k k-call">DB</span></td><td><code>GET /api/portal/quotes</code></td><td><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Portal — Quotation detail  (/portal/quotes/{id})</h3>
+<div class="file">web/src/portal/QuoteDetail.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/portal/quotes/{quote_id}</code> <code>GET /api/portal/quotes/{quote_id}/messages</code><br><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Submit Request</b><span class="note">Records the counter-offer; a rep must accept it before any line changes.</span></td><td><span class="k k-call">DB</span></td><td><code>POST /api/portal/quotes/{quote_id}/counter</code></td><td><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Confirm Quotation</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/portal/quotes/{quote_id}/confirm</code></td><td><span class="chip r">customer</span><span class="chip r">user</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td><b>Send Reply (submit)</b></td><td><span class="k k-call">DB</span></td><td><code>POST /api/portal/quotes/{quote_id}/messages</code></td><td><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip w">portal_message</span></td></tr>
+<tr><td><b>Dismiss banner</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Portal — Messages  (/portal/messages)</h3>
+<div class="file">web/src/portal/Messages.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/portal/messages</code><br><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">quotation</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Quotation link</b><span class="note">Opens that quotation in the portal.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<div class="screen">
+<h3>Portal — Profile  (/portal/profile)</h3>
+<div class="file">web/src/portal/Profile.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/portal/profile</code><br><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">quotation</span><span class="chip r">user</span></div>
+</div>
+<div class="screen">
+<h3>Shell — top navigation (both apps)</h3>
+<div class="file">web/src/internal/router.tsx, web/src/portal/router.tsx</div>
+<div class="loads"><b>On open</b><br><code>GET /api/me</code><br><span class="chip r">customer</span><span class="chip r">user</span></div>
+<table><colgroup><col style='width:22%'><col style='width:6%'><col style='width:30%'><col style='width:42%'></colgroup>
+<tr><th>Control</th><th></th><th>Request</th><th>Tables</th></tr>
+<tr><td><b>Home, Build Quote, Quotations, Approvals, Fulfillment, Subscriptions, Invoices, Deal Health, Reports, Products, Pipeline, Config, Ops, Audit</b><span class="note">Each link is shown only if GET /api/me grants its capability.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>My Quotations, Messages, Profile (portal)</b><span class="note">Same, from the portal capabilities.</span></td><td><span class="k k-nav">nav</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Reload data</b><span class="note">Reloads the page.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>Sign Out</b><span class="note">Clears the token locally; no request.</span></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+<tr><td><b>User menu, mobile menu</b></td><td><span class="k k-ui">UI</span></td><td><span class="none">no request</span></td><td><span class="none">&mdash;</span></td></tr>
+</table>
+</div>
+<h2>Part 2 · Every API route and the tables it touches</h2>
+<p>All 83 routes, grouped by router module. Observed SQL.</p>
+<h3>admin.py — discount config, warehouses, subscription plans</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/admin/discount-config</code></td><td><span class="chip r">approval_rule</span><span class="chip r">discount_policy</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">PUT</td><td><code>/api/admin/discount-config</code></td><td><span class="chip r">approval_rule</span><span class="chip r">discount_policy</span><span class="chip r">user</span></td><td><span class="chip w">tier_policy</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/admin/subscription-plans</code></td><td><span class="chip r">subscription_plan</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/admin/subscription-plans</code></td><td><span class="chip r">user</span></td><td><span class="chip w">subscription_plan</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/admin/warehouses</code></td><td><span class="chip r">stock</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/admin/warehouses</code></td><td><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">warehouse</span></td></tr>
+<tr><td class="method">PATCH</td><td><code>/api/admin/warehouses/{warehouse_id}</code></td><td><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">warehouse</span></td></tr>
+</table>
+<h3>approvals.py — the approval chain</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/approvals</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/approve</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">idempotency_key</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/reject</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/return</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+</table>
+<h3>auth.py — sign in, sign up, demo accounts</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/auth/demo-accounts</code></td><td><span class="chip r">customer</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/auth/login</code></td><td><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/auth/me</code></td><td><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/auth/portal-signup</code></td><td><span class="none">—</span></td><td><span class="chip w">customer</span><span class="chip w">user</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/auth/profiles</code></td><td><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/auth/register</code></td><td><span class="none">—</span></td><td><span class="chip w">user</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/auth/signup</code></td><td><span class="none">—</span></td><td><span class="chip w">user</span></td></tr>
+</table>
+<h3>catalog.py — products, variants, price lists</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/catalog/price-lists</code></td><td><span class="chip r">price_list</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/catalog/products</code></td><td><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/catalog/products</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">product</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/catalog/products/{product_id}</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">PATCH</td><td><code>/api/catalog/products/{product_id}</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">product</span></td></tr>
+<tr><td class="method">PUT</td><td><code>/api/catalog/products/{product_id}/price-list</code></td><td><span class="chip r">price_list</span><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">price_list_item</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/catalog/products/{product_id}/variants</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">product_variant</span></td></tr>
+<tr><td class="method">DELETE</td><td><code>/api/catalog/products/{product_id}/variants/{variant_id}</code></td><td><span class="chip r">price_list</span><span class="chip r">price_list_item</span><span class="chip r">product</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">product_variant</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/catalog/summary</code></td><td><span class="chip r">price_list</span><span class="chip r">product</span><span class="chip r">product_variant</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+</table>
+<h3>fulfillment.py — allocation, invoicing, payments, subscriptions</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/accept-counter</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">portal_message</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/amount-due</code></td><td><span class="chip r">credit_note</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/billing-detail</code></td><td><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/customer-confirm</code></td><td><span class="chip r">user</span></td><td><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/fulfillment</code></td><td><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">product</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/fulfillment/consolidate/{product_id}</code></td><td><span class="chip r">fulfillment_line</span><span class="chip r">quotation</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">outbox</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/fulfillment/override</code></td><td><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class="chip w">fulfillment_line</span><span class="chip w">fulfillment_plan</span><span class="chip w">outbox</span><span class="chip w">stock</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/generate-invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">subscription_plan</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span><span class="chip w">invoice</span><span class="chip w">invoice_line</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">subscription</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">invoice</span><span class="chip r">invoice_line</span><span class="chip r">payment</span><span class="chip r">subscription</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/payments</code></td><td><span class="chip r">credit_note</span><span class="chip r">user</span></td><td><span class="chip w">invoice</span><span class="chip w">outbox</span><span class="chip w">payment</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/plan-fulfillment</code></td><td><span class="chip r">product</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class="chip w">decision_log</span><span class="chip w">fulfillment_line</span><span class="chip w">fulfillment_plan</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">stock</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/send-to-portal</code></td><td><span class="chip r">user</span></td><td><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/subscription-change</code></td><td><span class="chip r">subscription</span><span class="chip r">user</span></td><td><span class="chip w">credit_note</span><span class="chip w">invoice</span><span class="chip w">invoice_line</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/subscription/cancel</code></td><td><span class="chip r">user</span></td><td><span class="chip w">outbox</span><span class="chip w">subscription</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/subscription/pause</code></td><td><span class="chip r">user</span></td><td><span class="chip w">subscription</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/suggestions</code></td><td><span class="chip r">config</span><span class="chip r">product</span><span class="chip r">product_affinity</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">stock</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span></td></tr>
+</table>
+<h3>me.py — identity and capabilities</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/me</code></td><td><span class="chip r">customer</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+</table>
+<h3>operations.py — dashboards, stock, invoices, reports</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/dashboard</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/fulfillment/pending</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/fulfillment/stock</code></td><td><span class="chip r">product</span><span class="chip r">stock</span><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/invoices</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/invoices/summary</code></td><td><span class="chip r">credit_note</span><span class="chip r">invoice</span><span class="chip r">payment</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/invoices/{invoice_id}</code></td><td><span class="chip r">credit_note</span><span class="chip r">customer</span><span class="chip r">fulfillment_plan</span><span class="chip r">invoice</span><span class="chip r">invoice_line</span><span class="chip r">payment</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/reports/revenue-trend</code></td><td><span class="chip r">invoice</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/subscriptions</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">subscription</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+</table>
+<h3>portal.py — the customer portal</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/portal/messages</code></td><td><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/portal/profile</code></td><td><span class="chip r">customer</span><span class="chip r">invoice</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/portal/quotes</code></td><td><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/portal/quotes/{quote_id}</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/portal/quotes/{quote_id}/confirm</code></td><td><span class="chip r">customer</span><span class="chip r">user</span></td><td><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/portal/quotes/{quote_id}/counter</code></td><td><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">user</span></td><td><span class="chip w">outbox</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/portal/quotes/{quote_id}/messages</code></td><td><span class="chip r">customer</span><span class="chip r">portal_message</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/portal/quotes/{quote_id}/messages</code></td><td><span class="chip r">customer</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">portal_message</span></td></tr>
+</table>
+<h3>quotes.py — quotations and lines</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes</code></td><td><span class="chip r">approval_request</span><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}</code></td><td><span class="chip r">approval_request</span><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/confirm</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">idempotency_key</span><span class="chip w">outbox</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/lines</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">DELETE</td><td><code>/api/quotes/{quote_id}/lines/{line_id}</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">PATCH</td><td><code>/api/quotes/{quote_id}/lines/{line_id}</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/messages</code></td><td><span class="chip r">portal_message</span><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/messages</code></td><td><span class="chip r">quotation</span><span class="chip r">user</span></td><td><span class="chip w">portal_message</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/order-discount</code></td><td><span class="chip r">config</span><span class="chip r">customer</span><span class="chip r">discount_policy</span><span class="chip r">product</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class="chip w">approval_request</span><span class="chip w">decision_log</span><span class="chip w">quotation</span><span class="chip w">quote_line</span></td></tr>
+</table>
+<h3>reference.py — customers, products, policies</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/customers</code></td><td><span class="chip r">customer</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/discount-policies</code></td><td><span class="chip r">discount_policy</span><span class="chip r">tier_policy</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/products</code></td><td><span class="chip r">product</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/warehouses</code></td><td><span class="chip r">user</span><span class="chip r">warehouse</span></td><td><span class='none'>reads only</span></td></tr>
+</table>
+<h3>surface.py — deal health, audit log, replay</h3>
+<table><colgroup><col style='width:9%'><col style='width:29%'><col style='width:31%'><col style='width:31%'></colgroup>
+<tr><th></th><th>Route</th><th>Reads</th><th>Writes</th></tr>
+<tr><td class="method">GET</td><td><code>/api/deal-health</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_line</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/export/pdf</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/health</code></td><td><span class="chip r">customer</span><span class="chip r">fulfillment_plan</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/narrate</code></td><td><span class="chip r">customer</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class="chip w">decision_log</span><span class="chip w">quotation</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/reliability/logs</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">POST</td><td><code>/api/reliability/replay/{log_id}</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/reliability/stats</code></td><td><span class="chip r">decision_log</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/reports</code></td><td><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+<tr><td class="method">GET</td><td><code>/api/reports/export</code></td><td><span class="chip r">customer</span><span class="chip r">product</span><span class="chip r">quotation</span><span class="chip r">quote_line</span><span class="chip r">user</span></td><td><span class='none'>reads only</span></td></tr>
+</table>
+<h2>Part 3 · Every table and what touches it</h2>
+<p>28 tables. A table with no writer is reference data the seed loads and the application only reads.</p>
+<table><colgroup><col style='width:14%'><col style='width:8%'><col style='width:43%'><col style='width:35%'></colgroup>
+<tr><th>Table</th><th>Reads</th><th>Written by</th><th>Notable readers</th></tr>
+<tr><td><span class="chip r">approval_request</span></td><td>4</td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><br><code>POST /api/quotes/{quote_id}/accept-counter</code><br><code>POST /api/quotes/{quote_id}/approve</code><br><code>POST /api/quotes/{quote_id}/confirm</code><br><code>POST /api/quotes/{quote_id}/lines</code><br><code>POST /api/quotes/{quote_id}/order-discount</code><br><code>POST /api/quotes/{quote_id}/reject</code><br><code>POST /api/quotes/{quote_id}/return</code></td><td><code>GET /api/approvals</code><br><code>GET /api/quotes</code><br><code>GET /api/quotes/{quote_id}</code><br><code>POST /api/quotes</code></td></tr>
+<tr><td><span class="chip r">approval_rule</span></td><td>2</td><td><span class="none">read-only in the app</span></td><td><code>GET /api/admin/discount-config</code><br><code>PUT /api/admin/discount-config</code></td></tr>
+<tr><td><span class="chip r">config</span></td><td>8</td><td><span class="none">read-only in the app</span></td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/quotes/{quote_id}/suggestions</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><br><code>POST /api/quotes</code><span class="note">+4 more</span></td></tr>
+<tr><td><span class="chip r">credit_note</span></td><td>7</td><td><code>POST /api/quotes/{quote_id}/subscription-change</code></td><td><code>GET /api/invoices</code><br><code>GET /api/invoices/summary</code><br><code>GET /api/invoices/{invoice_id}</code><br><code>GET /api/quotes/{quote_id}/amount-due</code><span class="note">+3 more</span></td></tr>
+<tr><td><span class="chip r">customer</span></td><td>34</td><td><code>POST /api/auth/portal-signup</code></td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/approvals</code><br><code>GET /api/auth/demo-accounts</code><br><code>GET /api/customers</code><span class="note">+30 more</span></td></tr>
+<tr><td><span class="chip r">decision_log</span></td><td>3</td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/dashboard</code><br><code>GET /api/deal-health</code><br><code>GET /api/quotes/{quote_id}/health</code><br><code>GET /api/quotes/{quote_id}/suggestions</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><br><code>POST /api/quotes/{quote_id}/accept-counter</code><br><code>POST /api/quotes/{quote_id}/confirm</code><br><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/lines</code><br><code>POST /api/quotes/{quote_id}/narrate</code><br><code>POST /api/quotes/{quote_id}/order-discount</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code></td><td><code>GET /api/reliability/logs</code><br><code>GET /api/reliability/stats</code><br><code>POST /api/reliability/replay/{log_id}</code></td></tr>
+<tr><td><span class="chip r">discount_policy</span></td><td>10</td><td><span class="none">read-only in the app</span></td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/admin/discount-config</code><br><code>GET /api/discount-policies</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><span class="note">+6 more</span></td></tr>
+<tr><td><span class="chip r">fulfillment_line</span></td><td>5</td><td><code>POST /api/quotes/{quote_id}/fulfillment/override</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code></td><td><code>GET /api/dashboard</code><br><code>GET /api/deal-health</code><br><code>GET /api/fulfillment/pending</code><br><code>GET /api/quotes/{quote_id}/fulfillment</code><span class="note">+1 more</span></td></tr>
+<tr><td><span class="chip r">fulfillment_plan</span></td><td>6</td><td><code>POST /api/quotes/{quote_id}/fulfillment/override</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code></td><td><code>GET /api/dashboard</code><br><code>GET /api/deal-health</code><br><code>GET /api/fulfillment/pending</code><br><code>GET /api/invoices/{invoice_id}</code><span class="note">+2 more</span></td></tr>
+<tr><td><span class="chip r">idempotency_key</span></td><td>0</td><td><code>POST /api/quotes/{quote_id}/approve</code><br><code>POST /api/quotes/{quote_id}/confirm</code></td><td><span class="none">—</span></td></tr>
+<tr><td><span class="chip r">invoice</span></td><td>8</td><td><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/payments</code><br><code>POST /api/quotes/{quote_id}/subscription-change</code></td><td><code>GET /api/dashboard</code><br><code>GET /api/invoices</code><br><code>GET /api/invoices/summary</code><br><code>GET /api/invoices/{invoice_id}</code><span class="note">+4 more</span></td></tr>
+<tr><td><span class="chip r">invoice_line</span></td><td>2</td><td><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/subscription-change</code></td><td><code>GET /api/invoices/{invoice_id}</code><br><code>GET /api/quotes/{quote_id}/invoices</code></td></tr>
+<tr><td><span class="chip r">outbox</span></td><td>0</td><td><code>POST /api/portal/quotes/{quote_id}/confirm</code><br><code>POST /api/portal/quotes/{quote_id}/counter</code><br><code>POST /api/quotes/{quote_id}/approve</code><br><code>POST /api/quotes/{quote_id}/confirm</code><br><code>POST /api/quotes/{quote_id}/customer-confirm</code><br><code>POST /api/quotes/{quote_id}/fulfillment/consolidate/{product_id}</code><br><code>POST /api/quotes/{quote_id}/fulfillment/override</code><br><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/payments</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code><br><code>POST /api/quotes/{quote_id}/reject</code><br><code>POST /api/quotes/{quote_id}/return</code><br><code>POST /api/quotes/{quote_id}/send-to-portal</code><br><code>POST /api/quotes/{quote_id}/subscription/cancel</code></td><td><span class="none">—</span></td></tr>
+<tr><td><span class="chip r">payment</span></td><td>5</td><td><code>POST /api/quotes/{quote_id}/payments</code></td><td><code>GET /api/invoices</code><br><code>GET /api/invoices/summary</code><br><code>GET /api/invoices/{invoice_id}</code><br><code>GET /api/quotes/{quote_id}/amount-due</code><span class="note">+1 more</span></td></tr>
+<tr><td><span class="chip r">portal_message</span></td><td>5</td><td><code>POST /api/portal/quotes/{quote_id}/messages</code><br><code>POST /api/quotes/{quote_id}/messages</code></td><td><code>GET /api/portal/messages</code><br><code>GET /api/portal/quotes/{quote_id}/messages</code><br><code>GET /api/quotes/{quote_id}/messages</code><br><code>POST /api/portal/quotes/{quote_id}/counter</code><span class="note">+1 more</span></td></tr>
+<tr><td><span class="chip r">price_list</span></td><td>8</td><td><span class="none">read-only in the app</span></td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>GET /api/catalog/price-lists</code><br><code>GET /api/catalog/products/{product_id}</code><br><code>GET /api/catalog/summary</code><span class="note">+4 more</span></td></tr>
+<tr><td><span class="chip r">price_list_item</span></td><td>5</td><td><code>PUT /api/catalog/products/{product_id}/price-list</code></td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>GET /api/catalog/products/{product_id}</code><br><code>PATCH /api/catalog/products/{product_id}</code><br><code>POST /api/catalog/products</code><span class="note">+1 more</span></td></tr>
+<tr><td><span class="chip r">product</span></td><td>32</td><td><code>PATCH /api/catalog/products/{product_id}</code><br><code>POST /api/catalog/products</code></td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/approvals</code><br><code>GET /api/catalog/products</code><span class="note">+28 more</span></td></tr>
+<tr><td><span class="chip r">product_affinity</span></td><td>1</td><td><span class="none">read-only in the app</span></td><td><code>GET /api/quotes/{quote_id}/suggestions</code></td></tr>
+<tr><td><span class="chip r">product_variant</span></td><td>6</td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>POST /api/catalog/products/{product_id}/variants</code></td><td><code>GET /api/catalog/products</code><br><code>GET /api/catalog/products/{product_id}</code><br><code>GET /api/catalog/summary</code><br><code>PATCH /api/catalog/products/{product_id}</code><span class="note">+2 more</span></td></tr>
+<tr><td><span class="chip r">quotation</span></td><td>26</td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><br><code>POST /api/portal/quotes/{quote_id}/confirm</code><br><code>POST /api/portal/quotes/{quote_id}/counter</code><br><code>POST /api/quotes</code><br><code>POST /api/quotes/{quote_id}/accept-counter</code><br><code>POST /api/quotes/{quote_id}/approve</code><br><code>POST /api/quotes/{quote_id}/confirm</code><br><code>POST /api/quotes/{quote_id}/customer-confirm</code><br><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/lines</code><br><code>POST /api/quotes/{quote_id}/narrate</code><br><code>POST /api/quotes/{quote_id}/order-discount</code><br><code>POST /api/quotes/{quote_id}/payments</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code><br><code>POST /api/quotes/{quote_id}/reject</code><br><code>POST /api/quotes/{quote_id}/return</code><br><code>POST /api/quotes/{quote_id}/send-to-portal</code></td><td><code>GET /api/approvals</code><br><code>GET /api/dashboard</code><br><code>GET /api/deal-health</code><br><code>GET /api/fulfillment/pending</code><span class="note">+22 more</span></td></tr>
+<tr><td><span class="chip r">quote_line</span></td><td>23</td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><br><code>POST /api/quotes</code><br><code>POST /api/quotes/{quote_id}/accept-counter</code><br><code>POST /api/quotes/{quote_id}/confirm</code><br><code>POST /api/quotes/{quote_id}/lines</code><br><code>POST /api/quotes/{quote_id}/order-discount</code></td><td><code>GET /api/approvals</code><br><code>GET /api/dashboard</code><br><code>GET /api/deal-health</code><br><code>GET /api/fulfillment/pending</code><span class="note">+19 more</span></td></tr>
+<tr><td><span class="chip r">stock</span></td><td>13</td><td><code>POST /api/quotes/{quote_id}/fulfillment/override</code><br><code>POST /api/quotes/{quote_id}/plan-fulfillment</code></td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>GET /api/admin/warehouses</code><br><code>GET /api/catalog/products</code><br><code>GET /api/catalog/products/{product_id}</code><span class="note">+9 more</span></td></tr>
+<tr><td><span class="chip r">subscription</span></td><td>4</td><td><code>POST /api/quotes/{quote_id}/generate-invoices</code><br><code>POST /api/quotes/{quote_id}/subscription/cancel</code><br><code>POST /api/quotes/{quote_id}/subscription/pause</code></td><td><code>GET /api/quotes/{quote_id}/billing-detail</code><br><code>GET /api/quotes/{quote_id}/invoices</code><br><code>GET /api/subscriptions</code><br><code>POST /api/quotes/{quote_id}/subscription-change</code></td></tr>
+<tr><td><span class="chip r">subscription_plan</span></td><td>2</td><td><code>POST /api/admin/subscription-plans</code></td><td><code>GET /api/admin/subscription-plans</code><br><code>POST /api/quotes/{quote_id}/generate-invoices</code></td></tr>
+<tr><td><span class="chip r">tier_policy</span></td><td>9</td><td><code>PUT /api/admin/discount-config</code></td><td><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/admin/discount-config</code><br><code>GET /api/discount-policies</code><br><code>PATCH /api/quotes/{quote_id}/lines/{line_id}</code><span class="note">+5 more</span></td></tr>
+<tr><td><span class="chip r">user</span></td><td>80</td><td><code>POST /api/auth/portal-signup</code><br><code>POST /api/auth/register</code><br><code>POST /api/auth/signup</code></td><td><code>DELETE /api/catalog/products/{product_id}/variants/{variant_id}</code><br><code>DELETE /api/quotes/{quote_id}/lines/{line_id}</code><br><code>GET /api/admin/discount-config</code><br><code>GET /api/admin/subscription-plans</code><span class="note">+76 more</span></td></tr>
+<tr><td><span class="chip r">warehouse</span></td><td>7</td><td><code>PATCH /api/admin/warehouses/{warehouse_id}</code><br><code>POST /api/admin/warehouses</code></td><td><code>GET /api/admin/warehouses</code><br><code>GET /api/fulfillment/pending</code><br><code>GET /api/fulfillment/stock</code><br><code>GET /api/quotes/{quote_id}/fulfillment</code><span class="note">+3 more</span></td></tr>
+</table>
+<h2>Appendix · Routes with no button</h2>
+<p>14 of 83 routes are implemented and tested but no control in the current UI reaches them. They are listed so the gap is visible rather than discovered later.</p>
+<table><colgroup><col style='width:9%'><col style='width:31%'><col style='width:60%'></colgroup>
+<tr><th></th><th>Route</th><th>What it does</th></tr>
+<tr><td class="method">PATCH</td><td><code>/api/admin/warehouses/{warehouse_id}</code></td><td>—</td></tr>
+<tr><td class="method">GET</td><td><code>/api/auth/me</code></td><td>Return authenticated internal user identity and email from database.</td></tr>
+<tr><td class="method">GET</td><td><code>/api/auth/profiles</code></td><td>Return internal profiles available for the quick login switcher.</td></tr>
+<tr><td class="method">POST</td><td><code>/api/auth/signup</code></td><td>Create an internal account and sign in.</td></tr>
+<tr><td class="method">GET</td><td><code>/api/catalog/price-lists</code></td><td>—</td></tr>
+<tr><td class="method">PATCH</td><td><code>/api/catalog/products/{product_id}</code></td><td>—</td></tr>
+<tr><td class="method">PUT</td><td><code>/api/catalog/products/{product_id}/price-list</code></td><td>—</td></tr>
+<tr><td class="method">POST</td><td><code>/api/catalog/products/{product_id}/variants</code></td><td>—</td></tr>
+<tr><td class="method">DELETE</td><td><code>/api/catalog/products/{product_id}/variants/{variant_id}</code></td><td>—</td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/subscription-change</code></td><td>—</td></tr>
+<tr><td class="method">PATCH</td><td><code>/api/quotes/{quote_id}/lines/{line_id}</code></td><td>—</td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/export/pdf</code></td><td>Generates an official PDF commercial quotation document.</td></tr>
+<tr><td class="method">GET</td><td><code>/api/quotes/{quote_id}/health</code></td><td>Evaluates Sentinel anomaly detectors on a specific quotation.</td></tr>
+<tr><td class="method">POST</td><td><code>/api/quotes/{quote_id}/narrate</code></td><td>Generates executive commentary for a quote with numeric consistency verification.</td></tr>
+</table>
+</div>

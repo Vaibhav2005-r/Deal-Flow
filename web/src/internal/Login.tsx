@@ -24,6 +24,15 @@ import { DealFlowLogo } from "@/components/Logo";
  * their own credentials.
  */
 
+type SignupRole = "rep" | "manager" | "finance" | "admin";
+
+const SIGNUP_ROLES: { key: SignupRole; label: string; blurb: string }[] = [
+  { key: "rep", label: "Sales Rep", blurb: "Build and send quotations" },
+  { key: "manager", label: "Manager", blurb: "Approve discounts, set policy" },
+  { key: "finance", label: "Finance", blurb: "Billing, payments, final sign-off" },
+  { key: "admin", label: "Admin", blurb: "Full access, catalog and config" },
+];
+
 interface DemoAccount {
   role: string;
   label: string;
@@ -35,6 +44,11 @@ interface DemoAccount {
 export default function Login({ onLogin }: { onLogin: () => void }) {
   const [activeTab, setActiveTab] = useState<"signin" | "create">("signin");
   const [fullName, setFullName] = useState<string>("");
+  // The role a new account is created with. The server still decides: it
+  // honours this only while demo mode is on, and otherwise makes a rep.
+  // Customers are not here -- a portal account needs the customer record that
+  // /portal/login's sign-up creates alongside it.
+  const [signupRole, setSignupRole] = useState<SignupRole>("rep");
   // start empty: a prefilled real login is still a published credential
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -125,6 +139,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
           email: cleanEmail,
           password,
           full_name: fullName.trim() || undefined,
+          role: signupRole,
         });
 
         // Automatically log the user in with their newly created account
@@ -315,14 +330,7 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                   all sign in here — you land in the right workspace automatically.
                 </p>
               </motion.div>
-            ) : (
-              <motion.div variants={itemVariants} className="mb-4 rounded-xl bg-slate-50 border border-slate-200/80 px-3 py-2.5">
-                <p className="text-xs text-slate-600 text-center leading-relaxed">
-                  New accounts are created as a <strong>Sales Rep</strong>. Approver
-                  and admin access is granted by an administrator, never claimed here.
-                </p>
-              </motion.div>
-            )}
+            ) : null}
 
             {/* One-click sign-in per role, for the demo.
                 Renders only when the server offers the accounts, so nothing
@@ -475,6 +483,49 @@ export default function Login({ onLogin }: { onLogin: () => void }) {
                         autoComplete="name"
                         className="w-full pl-9 pr-3 py-2 bg-white text-slate-900 border border-slate-200 rounded-lg text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3b5bf6]/20 focus:border-[#3b5bf6] shadow-2xs focus:shadow-xs transition-all duration-200"
                       />
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Role for the new account (Create Account only). */}
+                {activeTab === "create" && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Role
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {SIGNUP_ROLES.map((r) => {
+                        const active = signupRole === r.key;
+                        return (
+                          <button
+                            key={r.key}
+                            type="button"
+                            onClick={() => setSignupRole(r.key)}
+                            aria-pressed={active}
+                            className={`text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer ${
+                              active
+                                ? "border-[#3b5bf6] bg-[#3b5bf6]/5 ring-1 ring-[#3b5bf6]/25"
+                                : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span
+                              className={`block text-[11px] font-bold ${
+                                active ? "text-[#3b5bf6]" : "text-slate-700"
+                              }`}
+                            >
+                              {r.label}
+                            </span>
+                            <span className="block text-[10px] text-slate-500 leading-snug mt-0.5">
+                              {r.blurb}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </motion.div>
                 )}

@@ -18,6 +18,47 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 #: Self-service signup only ever creates a rep (see SignupRequest).
 SELF_SERVICE_ROLE = Role.REP
 
+#: The roles the sign-up form may ask for when demo mode is on.
+#: PORTAL is absent on purpose: a customer login is meaningless without the
+#: customer record that /auth/portal-signup creates alongside it, so a portal
+#: user minted here would sign in and then fail on every portal screen.
+SELECTABLE_ROLES: dict[str, Role] = {
+    "rep": Role.REP,
+    "manager": Role.MANAGER,
+    "finance": Role.FINANCE,
+    "admin": Role.ADMIN,
+}
+
+
+def resolve_signup_role(requested: str | None) -> Role:
+    """The role a self-service sign-up gets.
+
+    Honouring a role from the request body is privilege escalation: this
+    endpoint is public, so POST {"role": "admin"} hands the caller every
+    capability in the system -- approve their own over-ceiling quotes, rewrite
+    the discount policy, record payments. The approval chain is the product,
+    and that defeats it.
+
+    It is allowed here only because this build is a demo and the sign-up form
+    offers a role picker so a reviewer can see each workspace without an admin
+    provisioning accounts first. `demo_accounts_enabled=false` -- the same flag
+    that hides the demo login buttons -- restores the safe behaviour, and that
+    is the setting a real deployment runs with.
+    """
+    if not settings.demo_accounts_enabled:
+        return SELF_SERVICE_ROLE
+
+    key = (requested or "").strip().lower()
+    if not key:
+        return SELF_SERVICE_ROLE
+    if key not in SELECTABLE_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown role {requested!r}; choose one of "
+                   f"{', '.join(sorted(SELECTABLE_ROLES))}",
+        )
+    return SELECTABLE_ROLES[key]
+
 
 @router.post("/login", response_model=TokenResponse)
 def login(body: LoginRequest, session: Session = Depends(get_session)) -> TokenResponse:
@@ -119,9 +160,8 @@ def demo_accounts(session: Session = Depends(get_session)) -> list[dict]:
 def signup(body: SignupRequest, session: Session = Depends(get_session)) -> TokenResponse:
     """Create an internal account and sign in.
 
-    The requested role is deliberately ignored: an account created at a public
-    form is always a rep. Approver roles are granted by an admin, or anyone
-    could mint themselves a manager and approve their own over-ceiling quotes.
+    The role comes from `resolve_signup_role`, which honours what the form
+    asked for only while demo mode is on, and otherwise forces a rep.
     """
     email = body.email.strip().lower()
     if "@" not in email:
@@ -132,7 +172,7 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)) -> Toke
     user = User(
         email=email,
         full_name=body.full_name.strip(),
-        role=SELF_SERVICE_ROLE,
+        role=resolve_signup_role(body.role),
         password_hash=hash_password(body.password),
     )
     try:
@@ -178,17 +218,10 @@ def register(body: RegisterRequest, session: Session = Depends(get_session)) -> 
     if not name:
         name = clean_email.split("@")[0].replace(".", " ").title()
 
-    # SECURITY: the role in the request body is deliberately ignored.
-    #
-    # This endpoint is public. Honouring a claimed role let anyone POST
-    # {"role": "admin"} and receive every capability in the system -- approve
-    # their own over-ceiling quotes, rewrite the discount policy, record
-    # payments, manage the catalog. That defeats the approval chain, which is
-    # the point of the product.
-    #
-    # A self-service account is always a rep. Approver and admin roles are
-    # granted by an existing admin, never claimed at a sign-up form.
-    role_enum = Role.REP
+    # The sign-up form's role picker arrives here. resolve_signup_role honours
+    # it only while demo mode is on; with the flag off it returns a rep, which
+    # is what closes the escalation described in that function.
+    role_enum = resolve_signup_role(body.role)
 
     user = User(
         email=clean_email,
