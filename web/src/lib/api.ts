@@ -302,6 +302,8 @@ export interface PortalQuoteDetail {
 export interface PortalMessage {
   id: number;
   author_name: string;
+  author_role?: string | null;
+  is_customer?: boolean | null;
   body: string;
   quote_line_id: number | null;
   counter_discount_pct: string | null;

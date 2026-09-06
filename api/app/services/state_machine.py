@@ -55,6 +55,7 @@ TRANSITIONS: dict[tuple[QuoteState, Event], QuoteState | None] = {
     (QuoteState.PENDING_FINANCE, Event.RETURN_FOR_REVISION): QuoteState.DRAFT,
 
     (QuoteState.READY_TO_FULFILL, Event.SEND_TO_PORTAL): QuoteState.SENT,
+    (QuoteState.UNDER_NEGOTIATION, Event.SEND_TO_PORTAL): QuoteState.SENT,
     (QuoteState.SENT, Event.CUSTOMER_COUNTER): QuoteState.UNDER_NEGOTIATION,
     (QuoteState.UNDER_NEGOTIATION, Event.REP_ACCEPTS_COUNTER): QuoteState.RISK_SCORED,
 

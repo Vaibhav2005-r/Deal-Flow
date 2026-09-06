@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PortalQuoteSummary } from "@/lib/api";
 import { currency } from "@/lib/money";
+import SearchableSelect from "@/components/SearchableSelect";
 
 export default function QuoteList() {
   const [quotes, setQuotes] = useState<PortalQuoteSummary[]>([]);
@@ -152,20 +153,21 @@ export default function QuoteList() {
               </span>
               <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 pl-3">
                 <label className="text-slate-500">Per page:</label>
-                <select
+                <SearchableSelect
                   value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
+                  onChange={(val) => {
+                    setPageSize(Number(val));
                     setPage(1);
                   }}
-                  className="border border-slate-300 rounded px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:border-indigo-500"
-                >
-                  {[5, 10, 20, 50].map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
+                  containerClassName="w-20"
+                  className="py-1 px-2 text-xs"
+                  placeholder="Size"
+                  searchPlaceholder="Filter..."
+                  options={[5, 10, 20, 50].map((opt) => ({
+                    value: opt,
+                    label: String(opt),
+                  }))}
+                />
               </div>
             </div>
 

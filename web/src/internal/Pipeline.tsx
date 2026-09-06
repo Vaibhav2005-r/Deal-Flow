@@ -9,9 +9,7 @@ import {
   type Quote,
   type StockRow,
 } from "@/lib/api";
-import { StateBadge } from "./components";
-
-import { currency } from "./components";
+import { StateBadge, currency, SearchableSelect } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
 
@@ -202,24 +200,30 @@ export default function Pipeline() {
       <section className="bg-white border border-slate-200 rounded-lg p-4">
         <label className="text-sm">
           <span className="block text-slate-600 mb-1">Quotation</span>
-          <select
-            data-testid="pipeline-quote"
-            className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-96"
+          <SearchableSelect
+            dataTestId="pipeline-quote"
+            containerClassName="min-w-96"
+            className="min-w-96"
             value={selected ?? ""}
-            onChange={(e) => select(Number(e.target.value))}
-          >
-            <option value="">Select a quotation…</option>
-            {quotes.map((q) => (
-              <option key={q.id} value={q.id}>
-                #{q.id} · {q.customer_name} · {q.state}
-              </option>
-            ))}
-            {selected && !quotes.some((q) => q.id === selected) && selectedQuote && (
-              <option key={selectedQuote.id} value={selectedQuote.id}>
-                #{selectedQuote.id} · {selectedQuote.customer_name} · {selectedQuote.state}
-              </option>
-            )}
-          </select>
+            onChange={(val) => select(Number(val))}
+            placeholder="Select a quotation…"
+            searchPlaceholder="Search quotation by #ID, customer name, or state…"
+            options={(() => {
+              const opts = quotes.map((q) => ({
+                value: q.id,
+                label: `#${q.id} · ${q.customer_name}`,
+                sublabel: q.state,
+              }));
+              if (selected && !quotes.some((q) => q.id === selected) && selectedQuote) {
+                opts.unshift({
+                  value: selectedQuote.id,
+                  label: `#${selectedQuote.id} · ${selectedQuote.customer_name}`,
+                  sublabel: selectedQuote.state,
+                });
+              }
+              return opts;
+            })()}
+          />
         </label>
 
         {quote && (

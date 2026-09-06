@@ -293,22 +293,24 @@ def get_quote_messages(
         .where(PortalMessage.quotation_id == quote.id)
         .order_by(PortalMessage.id)
     ).all()
-    return [
-        {
+    results = []
+    for m in messages:
+        author = session.get(User, m.author_id)
+        role_str = author.role.value if author and hasattr(author.role, "value") else (str(author.role) if author else "PORTAL")
+        is_cust = (author.role == Role.PORTAL) if author else False
+        results.append({
             "id": m.id,
-            "author_name": (
-                session.get(User, m.author_id).full_name
-                if session.get(User, m.author_id) else "unknown"
-            ),
+            "author_name": author.full_name if author else "unknown",
+            "author_role": role_str,
+            "is_customer": is_cust,
             "body": m.body,
             "quote_line_id": m.quote_line_id,
             "counter_discount_pct": (
                 str(m.counter_discount_pct) if m.counter_discount_pct is not None else None
             ),
             "created_at": str(m.created_at),
-        }
-        for m in messages
-    ]
+        })
+    return results
 
 
 class MessageIn(BaseModel):
@@ -337,9 +339,12 @@ def post_quote_message(
     )
     session.add(msg)
     session.flush()
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
     return {
         "id": msg.id,
         "author_name": user.full_name,
+        "author_role": role_str,
+        "is_customer": user.role == Role.PORTAL,
         "body": msg.body,
         "quote_line_id": msg.quote_line_id,
         "counter_discount_pct": (

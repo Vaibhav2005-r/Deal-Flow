@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import type { ApprovalStep, Line } from "@/lib/api";
+import SearchableSelect from "@/components/SearchableSelect";
 
 export const STATE_STYLES: Record<string, { bg: string; text: string; dot: string; border: string }> = {
   DRAFT: {
@@ -122,10 +123,40 @@ export { money, currency } from "@/lib/money";
 export function LineTable({
   lines,
   onDelete,
+  onUpdateLine,
 }: {
   lines: Line[];
   onDelete?: (lineId: number) => void;
+  onUpdateLine?: (lineId: number, update: { qty?: number; discount_pct?: string | number }) => Promise<void> | void;
 }) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editQty, setEditQty] = useState<number>(1);
+  const [editDisc, setEditDisc] = useState<string>("0");
+  const [saving, setSaving] = useState(false);
+
+  function startEdit(ln: Line) {
+    setEditingId(ln.id);
+    setEditQty(ln.qty);
+    setEditDisc(String(ln.discount_pct));
+  }
+
+  async function handleSave(lineId: number) {
+    if (!onUpdateLine) return;
+    setSaving(true);
+    try {
+      await onUpdateLine(lineId, { qty: editQty, discount_pct: editDisc });
+      setEditingId(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setEditingId(null);
+  }
+
+  const hasActions = Boolean(onDelete || onUpdateLine);
+
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
       <table className="w-full text-xs text-left">
@@ -139,64 +170,130 @@ export function LineTable({
             <th className="py-2.5 px-3 text-right">Margin</th>
             <th className="py-2.5 px-3 text-right">Net Value</th>
             <th className="py-2.5 px-3">Status / Breach</th>
-            {onDelete && <th className="py-2.5 px-3 text-right">Action</th>}
+            {hasActions && <th className="py-2.5 px-3 text-right">Actions</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 font-sans">
-          {lines.map((ln) => (
-            <tr
-              key={ln.id}
-              className={`hover:bg-slate-50/70 transition-colors ${
-                ln.breaches_ceiling ? "bg-rose-50/50" : ""
-              }`}
-            >
-              <td className="py-2.5 px-3">
-                <span className="font-semibold text-slate-900">{ln.product_name}</span>
-                <span className="block text-[11px] text-slate-400">{ln.category}</span>
-              </td>
-              <td className="py-2.5 px-3 text-right font-medium text-slate-700">{ln.qty}</td>
-              <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">{currency(ln.list_value)}</td>
-              <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
-                {Number(ln.discount_pct).toFixed(1)}%
-              </td>
-              <td className="py-2.5 px-3 text-right tabular-nums text-slate-500">
-                {ln.ceiling_pct_applied ? `${Number(ln.ceiling_pct_applied).toFixed(0)}%` : "—"}
-              </td>
-              <td className="py-2.5 px-3 text-right tabular-nums font-medium text-slate-700">
-                {ln.margin_pct ? `${Number(ln.margin_pct).toFixed(1)}%` : "—"}
-              </td>
-              <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
-                {currency(ln.net_value)}
-              </td>
-              <td className="py-2.5 px-3">
-                {ln.breaches_ceiling ? (
-                  <span
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold text-[11px]"
-                    data-testid="breach"
-                  >
-                    +{Number(ln.excess_pp).toFixed(1)}pp breach
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center text-emerald-600 font-medium text-[11px]">
-                    ✓ within policy
-                  </span>
-                )}
-              </td>
-              {onDelete && (
-                <td className="py-2.5 px-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onDelete(ln.id)}
-                    data-testid={`delete-line-${ln.id}`}
-                    className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-1 rounded hover:bg-rose-50 transition-colors cursor-pointer"
-                    title="Remove line"
-                  >
-                    Delete
-                  </button>
+          {lines.map((ln) => {
+            const isEditing = editingId === ln.id;
+            return (
+              <tr
+                key={ln.id}
+                className={`hover:bg-slate-50/70 transition-colors ${
+                  isEditing ? "bg-indigo-50/30" : ln.breaches_ceiling ? "bg-rose-50/50" : ""
+                }`}
+              >
+                <td className="py-2.5 px-3">
+                  <span className="font-semibold text-slate-900">{ln.product_name}</span>
+                  <span className="block text-[11px] text-slate-400">{ln.category}</span>
                 </td>
-              )}
-            </tr>
-          ))}
+                <td className="py-2.5 px-3 text-right font-medium text-slate-700">
+                  {isEditing ? (
+                    <input
+                      type="number"
+                      min={1}
+                      value={editQty}
+                      onChange={(e) => setEditQty(Math.max(1, Number(e.target.value)))}
+                      className="border border-indigo-400 rounded px-1.5 py-0.5 text-right w-16 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                    />
+                  ) : (
+                    ln.qty
+                  )}
+                </td>
+                <td className="py-2.5 px-3 text-right tabular-nums text-slate-600">{currency(ln.list_value)}</td>
+                <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-800">
+                  {isEditing ? (
+                    <div className="inline-flex items-center gap-1 justify-end">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.5"
+                        value={editDisc}
+                        onChange={(e) => setEditDisc(e.target.value)}
+                        className="border border-indigo-400 rounded px-1.5 py-0.5 text-right w-16 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
+                      />
+                      <span>%</span>
+                    </div>
+                  ) : (
+                    `${Number(ln.discount_pct).toFixed(1)}%`
+                  )}
+                </td>
+                <td className="py-2.5 px-3 text-right tabular-nums text-slate-500">
+                  {ln.ceiling_pct_applied ? `${Number(ln.ceiling_pct_applied).toFixed(0)}%` : "—"}
+                </td>
+                <td className="py-2.5 px-3 text-right tabular-nums font-medium text-slate-700">
+                  {ln.margin_pct ? `${Number(ln.margin_pct).toFixed(1)}%` : "—"}
+                </td>
+                <td className="py-2.5 px-3 text-right tabular-nums font-bold text-slate-900">
+                  {currency(ln.net_value)}
+                </td>
+                <td className="py-2.5 px-3">
+                  {ln.breaches_ceiling ? (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold text-[11px]"
+                      data-testid="breach"
+                    >
+                      +{Number(ln.excess_pp).toFixed(1)}pp breach
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center text-emerald-600 font-medium text-[11px]">
+                      ✓ within policy
+                    </span>
+                  )}
+                </td>
+                {hasActions && (
+                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                    {isEditing ? (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleSave(ln.id)}
+                          disabled={saving}
+                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2 py-0.5 rounded transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                        >
+                          {saving ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancel}
+                          disabled={saving}
+                          className="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-2 py-0.5 rounded transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        {onUpdateLine && (
+                          <button
+                            type="button"
+                            onClick={() => startEdit(ln)}
+                            data-testid={`edit-line-${ln.id}`}
+                            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 rounded hover:bg-indigo-50 transition-colors cursor-pointer"
+                            title="Edit quantity or discount %"
+                          >
+                            Edit
+                          </button>
+                        )}
+                        {onDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(ln.id)}
+                            data-testid={`delete-line-${ln.id}`}
+                            className="text-xs text-rose-600 hover:text-rose-800 font-semibold px-2 py-0.5 rounded hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Remove line"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -460,17 +557,18 @@ export function Pagination({
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5 ml-2 border-l border-slate-200 pl-3">
             <label className="text-slate-500">Per page:</label>
-            <select
+            <SearchableSelect
               value={pageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="border border-slate-200 rounded-md px-2 py-1 bg-white text-slate-800 font-medium text-xs focus:outline-none focus:ring-1 focus:ring-[#1d72f2]"
-            >
-              {pageSizeOptions.map((opt) => (
-                <option key={opt} value={opt}>
-                  {opt}
-                </option>
-              ))}
-            </select>
+              onChange={(val: any) => onPageSizeChange(Number(val))}
+              containerClassName="w-20"
+              className="text-xs py-0.5 px-2"
+              placeholder="Size"
+              searchPlaceholder="Filter..."
+              options={pageSizeOptions.map((opt) => ({
+                value: opt,
+                label: String(opt),
+              }))}
+            />
           </div>
         )}
       </div>
@@ -512,3 +610,6 @@ export function Pagination({
     </div>
   );
 }
+
+export { default as SearchableSelect } from "@/components/SearchableSelect";
+export type { SelectOption, SearchableSelectProps } from "@/components/SearchableSelect";

@@ -9,8 +9,10 @@ import {
   type Quote,
   type Score,
 } from "@/lib/api";
-import { ApprovalTrail, LineTable, RiskBadge, StateBadge, currency } from "./components";
+import { ApprovalTrail, LineTable, RiskBadge, StateBadge, currency, SearchableSelect } from "./components";
 import UpsellPanel from "./UpsellPanel";
+import OfferHistoryLog from "@/components/OfferHistoryLog";
+import { getCurrentUser } from "@/lib/auth";
 
 export default function QuoteBuilder() {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +30,11 @@ export default function QuoteBuilder() {
   // Negotiation thread state
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [replyText, setReplyText] = useState("");
+  const [isEditingTerms, setIsEditingTerms] = useState(false);
+  const [showCounterModal, setShowCounterModal] = useState(false);
+  const [counterDiscount, setCounterDiscount] = useState("");
+  const [counterBody, setCounterBody] = useState("");
+  const [counterLineId, setCounterLineId] = useState<number | null>(null);
 
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [productId, setProductId] = useState<number | null>(null);
@@ -149,6 +156,24 @@ export default function QuoteBuilder() {
       setQuote(q);
     });
 
+  const updateLine = (lineId: number, update: { qty?: number; discount_pct?: string | number }) =>
+    run(async () => {
+      if (!quote) return;
+      setBusy(true);
+      setActionNote(null);
+      try {
+        const q = await api.patch<Quote>(`/api/quotes/${quote.id}/lines/${lineId}`, {
+          qty: update.qty !== undefined ? Number(update.qty) : undefined,
+          discount_pct: update.discount_pct !== undefined ? String(update.discount_pct) : undefined,
+        });
+        setQuote(q);
+        setActionNote("Line updated! Quotation automatically re-scored and evaluated against governance ceilings.");
+        await loadMessages(quote.id);
+      } finally {
+        setBusy(false);
+      }
+    });
+
   const acceptUpsell = (prodId: number) => {
     const prod = products.find((p) => p.id === prodId);
     const pol = policies.find(
@@ -228,6 +253,39 @@ export default function QuoteBuilder() {
     });
   };
 
+  const submitRepCounterOffer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!quote) return;
+    const discVal = counterDiscount.trim() ? parseFloat(counterDiscount) : null;
+    const noteText =
+      counterBody.trim() ||
+      (discVal !== null
+        ? `Sales representative offered ${discVal}% revised counter-discount.`
+        : "Sales representative delivered revised commercial terms.");
+
+    setBusy(true);
+    setActionNote(null);
+    try {
+      await api.post(`/api/quotes/${quote.id}/counter-offer`, {
+        body: noteText,
+        counter_discount_pct: discVal,
+        quote_line_id: counterLineId,
+      });
+      setActionNote("Counter-offer delivered directly to customer portal.");
+      setShowCounterModal(false);
+      setCounterDiscount("");
+      setCounterBody("");
+      setCounterLineId(null);
+      const q = await api.get<Quote>(`/api/quotes/${quote.id}`);
+      setQuote(q);
+      await loadMessages(quote.id);
+    } catch (err: any) {
+      setError(err instanceof Error ? err.message : "Failed to deliver counter-offer");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const lastReturnedStep = quote?.approval_steps
     ?.slice()
     .reverse()
@@ -238,7 +296,8 @@ export default function QuoteBuilder() {
     quote.state === "DRAFT" ||
     quote.state === "PENDING_MANAGER" ||
     quote.state === "PENDING_FINANCE" ||
-    quote.state === "UNDER_NEGOTIATION";
+    quote.state === "UNDER_NEGOTIATION" ||
+    isEditingTerms;
 
   return (
     <div className="space-y-6">
@@ -254,7 +313,27 @@ export default function QuoteBuilder() {
           )}
         </div>
         {quote && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {(quote.state === "SENT" || quote.state === "UNDER_NEGOTIATION" || quote.state === "READY_TO_FULFILL") && (
+              <div className="flex items-center gap-2 mr-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(true)}
+                  className="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>💼 Make Counter-Offer</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTerms(!isEditingTerms)}
+                  className={`${
+                    isEditingTerms ? "bg-amber-600 text-white" : "bg-indigo-600 hover:bg-indigo-700 text-white"
+                  } text-xs font-bold px-3 py-1.5 rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer`}
+                >
+                  <span>{isEditingTerms ? "✕ Close Line Editor" : "✏️ Revise Line Items"}</span>
+                </button>
+              </div>
+            )}
             <StateBadge state={quote.state} />
             <RiskBadge score={quote.risk_score ? Number(quote.risk_score) : null} />
           </div>
@@ -312,135 +391,231 @@ export default function QuoteBuilder() {
         </div>
       )}
 
-      {quote && (quote.state === "READY_TO_FULFILL" || quote.legal_events?.includes("send_to_portal")) && (
-        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      {isEditingTerms && quote && (
+        <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
           <div>
-            <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-              <span>🚀 Quotation Approved &amp; Ready for Customer</span>
+            <h4 className="text-sm font-bold text-blue-950 flex items-center gap-2">
+              <span>✏️ Offer Revision Mode Active</span>
             </h4>
-            <p className="text-xs text-emerald-800 mt-0.5">
-              Deliver this approved quotation to the customer portal so they can review, negotiate, or accept terms.
+            <p className="text-xs text-blue-800 mt-0.5">
+              You can modify line quantities, unit prices, and discounts directly in the table below. When done, deliver the revised offer to the customer.
             </p>
           </div>
-          <button
-            onClick={sendToPortal}
-            disabled={busy}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition disabled:opacity-50"
-          >
-            {busy ? "Sending…" : "Send to Customer Portal →"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setIsEditingTerms(false);
+                await sendToPortal();
+              }}
+              disabled={busy}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm cursor-pointer"
+            >
+              {busy ? "Delivering…" : "Deliver Revised Offer to Portal →"}
+            </button>
+            <button
+              onClick={() => setIsEditingTerms(false)}
+              className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg cursor-pointer"
+            >
+              Done Editing
+            </button>
+          </div>
         </div>
       )}
 
-      {quote && (quote.state === "UNDER_NEGOTIATION" || messages.length > 0) && (() => {
-        const counterMsgs = messages.filter((m) => m.counter_discount_pct !== null);
-        const latestCounter = counterMsgs.length > 0 ? counterMsgs[counterMsgs.length - 1] : null;
-        const counterLine = latestCounter ? quote.lines.find((l) => l.id === latestCounter.quote_line_id) : null;
+      {quote && (quote.state === "READY_TO_FULFILL" || quote.state === "UNDER_NEGOTIATION" || quote.legal_events?.includes("send_to_portal")) && (
+        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div>
+            <h4 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+              <span>🚀 {quote.state === "UNDER_NEGOTIATION" ? "Deliver Revised Offer to Customer Portal" : "Quotation Approved & Ready for Customer"}</span>
+            </h4>
+            <p className="text-xs text-emerald-800 mt-0.5">
+              {quote.state === "UNDER_NEGOTIATION"
+                ? "You can edit line items below, adjust discounts, and deliver your revised offer directly back to the customer's portal."
+                : "Deliver this approved quotation to the customer portal so they can review, negotiate, or accept terms."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCounterModal(true)}
+              className="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm cursor-pointer"
+            >
+              💼 Make Counter-Offer
+            </button>
+            <button
+              onClick={sendToPortal}
+              disabled={busy}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition disabled:opacity-50 cursor-pointer"
+            >
+              {busy ? "Sending…" : quote.state === "UNDER_NEGOTIATION" ? "Send Revised Offer to Portal →" : "Send to Customer Portal →"}
+            </button>
+          </div>
+        </div>
+      )}
 
-        return (
-          <section className="bg-white border-2 border-purple-200 rounded-lg p-5 shadow-xs space-y-4" data-testid="negotiation-panel">
-            <div className="flex items-center justify-between border-b border-purple-100 pb-3">
+      {/* Offer History & Negotiation Log */}
+      {quote && (
+        <OfferHistoryLog
+          quoteId={quote.id}
+          quoteVersion={quote.version}
+          quoteState={quote.state}
+          lines={quote.lines}
+          messages={messages}
+          customerName={customers.find((c) => c.id === quote.customer_id)?.name}
+          repName={getCurrentUser()?.full_name || "Sales Representative"}
+          netTotal={quote.lines?.reduce((sum, l) => sum + (Number(l.qty) * Number(l.unit_price) * (1 - Number(l.discount_pct) / 100)), 0)}
+          isInternal={true}
+          onMakeCounterOffer={() => setShowCounterModal(true)}
+          onReviseTerms={() => setIsEditingTerms(true)}
+          onAcceptCounter={(() => {
+            const counterMsgs = messages.filter((m) => m.counter_discount_pct !== null);
+            return counterMsgs.length > 0 ? acceptCounter : undefined;
+          })()}
+          latestCustomerCounterPct={(() => {
+            const counterMsgs = messages.filter((m) => m.counter_discount_pct !== null);
+            return counterMsgs.length > 0 ? Number(counterMsgs[counterMsgs.length - 1].counter_discount_pct) : null;
+          })()}
+        />
+      )}
+
+      {quote && (quote.state === "UNDER_NEGOTIATION" || messages.length > 0) && (
+        <section className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Send Quick Note or Clarification to Customer Portal
+          </h4>
+          <form onSubmit={postReply} className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Post a message or clarification to the customer portal…"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <button
+              type="submit"
+              disabled={busy || !replyText.trim()}
+              className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-4 py-2 text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
+            >
+              Send Message
+            </button>
+          </form>
+        </section>
+      )}
+
+      {/* Sales Representative Counter-Offer Modal */}
+      {showCounterModal && quote && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-purple-950">💬 Customer Portal Negotiation</span>
-                {quote.state === "UNDER_NEGOTIATION" && (
-                  <span className="bg-purple-100 text-purple-800 border border-purple-200 text-xs font-semibold px-2.5 py-0.5 rounded-full animate-pulse">
-                    Active Counter-Proposal
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-slate-500 font-medium">
-                {messages.length} message{messages.length === 1 ? "" : "s"} in thread
-              </span>
-            </div>
-
-            {quote.state === "UNDER_NEGOTIATION" && latestCounter && (
-              <div className="bg-purple-50 border border-purple-300 rounded-lg p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-bold text-purple-950">
-                      Customer Requested Counter-Discount: {Number(latestCounter.counter_discount_pct).toFixed(1)}%
-                      {counterLine && <span className="text-purple-700 font-normal"> on {counterLine.product_name}</span>}
-                    </h4>
-                    <p className="text-xs text-purple-800 mt-1 italic bg-white/70 border border-purple-200 p-2 rounded">
-                      "{latestCounter.body}"
-                    </p>
-                    <p className="text-xs text-purple-700 mt-2">
-                      💡 <strong>1-Click Resolution:</strong> Accepting will apply {Number(latestCounter.counter_discount_pct).toFixed(1)}% to the targeted line, void previous approvals, and re-score the quote immediately.
-                    </p>
-                  </div>
-                  <button
-                    onClick={acceptCounter}
-                    disabled={busy}
-                    data-testid="accept-counter"
-                    className="shrink-0 bg-purple-700 hover:bg-purple-800 text-white rounded-lg px-4 py-2.5 text-xs font-bold shadow-sm transition disabled:opacity-50"
-                  >
-                    {busy ? "Applying…" : `⚡ Accept Counter (${Number(latestCounter.counter_discount_pct).toFixed(1)}%)`}
-                  </button>
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-100 text-purple-700 font-bold text-sm">
+                  💼
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Make Counter-Offer to Customer</h3>
+                  <p className="text-xs text-slate-500">Deliver revised pricing or terms to the customer portal.</p>
                 </div>
               </div>
-            )}
-
-            {/* Messages discussion thread */}
-            {messages.length > 0 && (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {messages.map((m) => {
-                  const mLine = m.quote_line_id ? quote.lines.find((l) => l.id === m.quote_line_id) : null;
-                  return (
-                    <div key={m.id} className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-slate-800">{m.author_name}</span>
-                        <span className="text-[11px] text-slate-400 tabular-nums">{m.created_at.slice(0, 19).replace("T", " ")}</span>
-                      </div>
-                      <p className="text-slate-700">{m.body}</p>
-                      {m.counter_discount_pct && (
-                        <div className="pt-1">
-                          <span className="inline-block bg-purple-100 text-purple-800 text-[11px] font-semibold px-2 py-0.5 rounded">
-                            Proposed {Number(m.counter_discount_pct).toFixed(1)}% discount {mLine ? `on ${mLine.product_name}` : ""}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Rep reply input */}
-            <form onSubmit={postReply} className="flex gap-2 pt-2 border-t border-purple-100">
-              <input
-                type="text"
-                placeholder="Post a reply or counter-response to the customer portal…"
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                className="flex-1 border border-slate-300 rounded px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
               <button
-                type="submit"
-                disabled={busy || !replyText.trim()}
-                className="bg-slate-900 hover:bg-slate-800 text-white rounded px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50"
+                type="button"
+                onClick={() => setShowCounterModal(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold cursor-pointer"
               >
-                Send Reply
+                ✕
               </button>
+            </div>
+
+            <form onSubmit={submitRepCounterOffer} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Target Proposal Scope
+                </label>
+                <select
+                  value={counterLineId ?? ""}
+                  onChange={(e) => setCounterLineId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                >
+                  <option value="">Apply across Entire Quotation (All Lines)</option>
+                  {quote.lines.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      Line: {l.product_name} (Current: {Number(l.discount_pct).toFixed(1)}% off)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Proposed Counter Discount %
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  required
+                  value={counterDiscount}
+                  onChange={(e) => setCounterDiscount(e.target.value)}
+                  placeholder="e.g. 12.5"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  This will update line discounts and automatically verify governance ceilings.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Counter-Offer Note / Terms Explanation
+                </label>
+                <textarea
+                  rows={3}
+                  value={counterBody}
+                  onChange={(e) => setCounterBody(e.target.value)}
+                  placeholder="e.g. We can offer 12.5% discount if the order is confirmed by Friday with standard annual SLA."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-purple-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowCounterModal(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy || !counterDiscount}
+                  className="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition disabled:opacity-50 cursor-pointer"
+                >
+                  {busy ? "Delivering Counter…" : "Deliver Counter-Offer to Customer Portal →"}
+                </button>
+              </div>
             </form>
-          </section>
-        );
-      })()}
+          </div>
+        </div>
+      )}
 
       <section className="bg-white border border-slate-200 rounded-lg p-4">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
             <span className="block text-slate-600 mb-1">Customer</span>
-            <select
-              data-testid="customer"
-              className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-64"
+            <SearchableSelect
+              dataTestId="customer"
+              containerClassName="min-w-64"
+              className="min-w-64"
               value={customerId ?? ""}
-              onChange={(e) => setCustomerId(Number(e.target.value))}
+              onChange={(val) => setCustomerId(Number(val))}
               disabled={!!quote}
-            >
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>{c.name} · {c.tier}</option>
-              ))}
-            </select>
+              placeholder="Select customer..."
+              searchPlaceholder="Search customer by name or tier..."
+              options={customers.map((c) => ({
+                value: c.id,
+                label: c.name,
+                sublabel: c.tier,
+              }))}
+            />
           </label>
           <button
             onClick={quote ? startNew : createQuote}
@@ -472,16 +647,20 @@ export default function QuoteBuilder() {
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Product</span>
-              <select
-                data-testid="product"
-                className="border border-slate-300 rounded px-2 py-1.5 text-sm min-w-72"
+              <SearchableSelect
+                dataTestId="product"
+                containerClassName="min-w-72"
+                className="min-w-72"
                 value={productId ?? ""}
-                onChange={(e) => setProductId(Number(e.target.value))}
-              >
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name} · {p.category}</option>
-                ))}
-              </select>
+                onChange={(val) => setProductId(Number(val))}
+                placeholder="Select a product..."
+                searchPlaceholder="Search product by name or category..."
+                options={products.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                  sublabel: `${p.category} · ₹${p.list_price}`,
+                }))}
+              />
             </label>
             <label className="text-sm">
               <span className="block text-slate-600 mb-1">Qty</span>
@@ -525,6 +704,7 @@ export default function QuoteBuilder() {
           <LineTable
             lines={quote.lines}
             onDelete={isEditable ? removeLine : undefined}
+            onUpdateLine={isEditable ? updateLine : undefined}
           />
           {/* §B3: one discount across every line, plus a live margin
               indicator beside the total. The order discount is written onto

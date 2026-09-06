@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type PendingOrder, type StockRow } from "@/lib/api";
-import { EmptyRow, ErrorBanner, PageHeader, Pagination, StatCard, StateBadge } from "./components";
+import { EmptyRow, ErrorBanner, PageHeader, Pagination, StatCard, StateBadge, SearchableSelect } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 import { currency } from "@/lib/money";
 
@@ -193,21 +193,21 @@ export default function FulfillmentList() {
               />
               low stock only
             </label>
-            <select
+            <SearchableSelect
               value={warehouse}
-              onChange={(e) => {
-                setWarehouse(e.target.value);
+              onChange={(val) => {
+                setWarehouse(String(val));
                 setStockPage(1);
               }}
-              className="border border-slate-300 rounded px-2 py-1 text-xs"
-            >
-              <option value="all">All warehouses</option>
-              {warehouses.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
+              placeholder="All warehouses"
+              searchPlaceholder="Search warehouse..."
+              containerClassName="w-44"
+              className="text-xs"
+              options={[
+                { value: "all", label: "All warehouses" },
+                ...warehouses.map((w) => ({ value: w, label: w })),
+              ]}
+            />
           </div>
         </div>
         <div className="max-h-96 overflow-y-auto">

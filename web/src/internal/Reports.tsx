@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type ReportingMetrics } from "@/lib/api";
 import { useAutoRefresh } from "@/lib/live";
 import { currency } from "@/lib/money";
+import SearchableSelect from "@/components/SearchableSelect";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
@@ -99,66 +100,82 @@ export default function Reports() {
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
         <div>
           <label className="block font-semibold text-slate-600 mb-1">Time Horizon</label>
-          <select
+          <SearchableSelect
             value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="all">All Time</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="90d">Last 90 Days</option>
-            <option value="1y">Last Year</option>
-          </select>
+            onChange={(val) => setPeriod(String(val))}
+            containerClassName="w-full"
+            className="w-full bg-slate-50 border-slate-300"
+            placeholder="Select period..."
+            searchPlaceholder="Search horizon..."
+            options={[
+              { value: "all", label: "All Time" },
+              { value: "30d", label: "Last 30 Days" },
+              { value: "90d", label: "Last 90 Days" },
+              { value: "1y", label: "Last Year" },
+            ]}
+          />
         </div>
 
         <div>
           <label className="block font-semibold text-slate-600 mb-1">Status Filter</label>
-          <select
+          <SearchableSelect
             value={selectedState}
-            onChange={(e) => setSelectedState(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="ALL">All States</option>
-            <option value="DRAFT">DRAFT</option>
-            <option value="PENDING_MANAGER">PENDING MANAGER</option>
-            <option value="PENDING_FINANCE">PENDING FINANCE</option>
-            <option value="READY_TO_FULFILL">READY TO FULFILL</option>
-            <option value="SENT">SENT (Portal)</option>
-            <option value="UNDER_NEGOTIATION">UNDER NEGOTIATION</option>
-            <option value="CONFIRMED">CONFIRMED</option>
-            <option value="FULFILLING">FULFILLING</option>
-            <option value="INVOICED">INVOICED</option>
-            <option value="PAID">PAID</option>
-          </select>
+            onChange={(val) => setSelectedState(String(val))}
+            containerClassName="w-full"
+            className="w-full bg-slate-50 border-slate-300"
+            placeholder="Select state..."
+            searchPlaceholder="Search state..."
+            options={[
+              { value: "ALL", label: "All States" },
+              { value: "DRAFT", label: "DRAFT" },
+              { value: "PENDING_MANAGER", label: "PENDING MANAGER" },
+              { value: "PENDING_FINANCE", label: "PENDING FINANCE" },
+              { value: "READY_TO_FULFILL", label: "READY TO FULFILL" },
+              { value: "SENT", label: "SENT (Portal)" },
+              { value: "UNDER_NEGOTIATION", label: "UNDER NEGOTIATION" },
+              { value: "CONFIRMED", label: "CONFIRMED" },
+              { value: "FULFILLING", label: "FULFILLING" },
+              { value: "INVOICED", label: "INVOICED" },
+              { value: "PAID", label: "PAID" },
+            ]}
+          />
         </div>
 
         <div>
           <label className="block font-semibold text-slate-600 mb-1">Product Category</label>
-          <select
+          <SearchableSelect
             value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="all">All Categories</option>
-            <option value="Hardware">Hardware</option>
-            <option value="Software">Software</option>
-            <option value="Service">Service</option>
-            <option value="Subscription">Subscription</option>
-          </select>
+            onChange={(val) => setSelectedCategory(String(val))}
+            containerClassName="w-full"
+            className="w-full bg-slate-50 border-slate-300"
+            placeholder="Select category..."
+            searchPlaceholder="Search category..."
+            options={[
+              { value: "all", label: "All Categories" },
+              { value: "Hardware", label: "Hardware" },
+              { value: "Software", label: "Software" },
+              { value: "Service", label: "Service" },
+              { value: "Subscription", label: "Subscription" },
+            ]}
+          />
         </div>
 
         <div>
           <label className="block font-semibold text-slate-600 mb-1">Sales Representative</label>
-          <select
+          <SearchableSelect
             value={selectedRep}
-            onChange={(e) => setSelectedRep(e.target.value)}
-            className="w-full border border-slate-300 rounded-lg p-2 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All Representatives</option>
-            <option value="1">Priya Raghavan</option>
-            <option value="2">Daniel Okafor</option>
-            <option value="3">Sofia Marchetti</option>
-          </select>
+            onChange={(val) => setSelectedRep(String(val))}
+            containerClassName="w-full"
+            className="w-full bg-slate-50 border-slate-300"
+            placeholder="Select representative..."
+            searchPlaceholder="Search rep by name..."
+            options={[
+              { value: "", label: "All Representatives" },
+              { value: "1", label: "Priya Raghavan" },
+              { value: "2", label: "Daniel Okafor" },
+              { value: "3", label: "Sofia Marchetti" },
+            ]}
+          />
         </div>
       </div>
 

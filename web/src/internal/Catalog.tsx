@@ -12,6 +12,7 @@ import {
   Pagination,
   StatCard,
   currency,
+  SearchableSelect,
 } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
@@ -102,21 +103,21 @@ export default function Catalog() {
         subtitle="Manage sellable SKUs, recurring product configurations, list pricing, and margin baselines."
         actions={
           <div className="flex items-center gap-2.5">
-            <select
+            <SearchableSelect
               value={category}
-              onChange={(e) => {
-                setCategory(e.target.value);
+              onChange={(val) => {
+                setCategory(String(val));
                 setPage(1);
               }}
-              className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 font-semibold focus:outline-none focus:ring-1 focus:ring-[#1d72f2] shadow-2xs cursor-pointer"
-            >
-              <option value="all">All Categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              placeholder="All Categories"
+              searchPlaceholder="Search category..."
+              className="text-xs text-slate-800 font-semibold"
+              containerClassName="w-44"
+              options={[
+                { value: "all", label: "All Categories" },
+                ...categories.map((c) => ({ value: c, label: c })),
+              ]}
+            />
             <button
               type="button"
               onClick={() => setCreating(!creating)}
@@ -189,17 +190,15 @@ export default function Catalog() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Category</label>
-              <select
+              <SearchableSelect
                 value={draft.category}
-                onChange={(e) => setDraft({ ...draft, category: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1d72f2]"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setDraft({ ...draft, category: String(val) })}
+                containerClassName="w-full"
+                className="w-full bg-slate-50 border-slate-200 text-xs"
+                placeholder="Select category..."
+                searchPlaceholder="Search category..."
+                options={categories.map((c) => ({ value: c, label: c }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">List Price (₹)</label>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, type PortalLine, type PortalMessage, type PortalQuoteDetail } from "@/lib/api";
 import { currency } from "@/lib/money";
+import OfferHistoryLog from "@/components/OfferHistoryLog";
 
 export default function QuoteDetail() {
   const { id } = useParams<{ id: string }>();
@@ -91,6 +92,20 @@ export default function QuoteDetail() {
     if (!discountVal && !hasLineComments && !dateVal) {
       setError("Please provide a counter discount %, requested delivery date, or a line comment.");
       return;
+    }
+
+    if (dateVal) {
+      const selected = new Date(dateVal);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (isNaN(selected.getTime())) {
+        setError("Please provide a valid requested delivery date.");
+        return;
+      }
+      if (selected < today) {
+        setError("Requested delivery date cannot be in the past. Please select today or a future date.");
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -415,16 +430,38 @@ export default function QuoteDetail() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5 tracking-wide">
-                        Requested Delivery Date
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-300 tracking-wide">
+                          Requested Delivery Date
+                        </label>
+                        <span className="text-[10px] text-slate-400 font-medium">Future date required</span>
+                      </div>
                       <input
                         type="date"
+                        min={new Date().toISOString().split("T")[0]}
+                        max={(() => {
+                          const d = new Date();
+                          d.setFullYear(d.getFullYear() + 1);
+                          return d.toISOString().split("T")[0];
+                        })()}
                         disabled={!isActionable}
                         value={deliveryDate}
                         onChange={(e) => setDeliveryDate(e.target.value)}
                         className="w-full bg-[#1e293b] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                       />
+                      {deliveryDate && (
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Delivery requested for:{" "}
+                          <span className="text-blue-400 font-medium">
+                            {new Date(deliveryDate + "T00:00:00").toLocaleDateString(undefined, {
+                              weekday: "short",
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -456,6 +493,18 @@ export default function QuoteDetail() {
                     If final terms exceed thresholds, the quote automatically re-enters approval (Screen 6).
                   </div>
                 </div>
+
+                {/* Offer History & Negotiation Timeline */}
+                <OfferHistoryLog
+                  quoteId={quote.id}
+                  quoteVersion={quote.version}
+                  quoteState={quote.state}
+                  lines={quote.lines}
+                  messages={messages}
+                  customerName={quote.customer_name}
+                  netTotal={quote.net_total}
+                  isInternal={false}
+                />
 
                 {/* Quotation Commercial Total & Summary Card */}
                 <div className="bg-[#1e293b] border border-slate-700 rounded-2xl p-6 shadow-xl flex flex-wrap items-center justify-between gap-4">

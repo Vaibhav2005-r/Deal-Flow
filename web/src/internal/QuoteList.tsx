@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { api, type Quote } from "@/lib/api";
-import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, currency } from "./components";
+import { EmptyRow, PageHeader, Pagination, RiskBadge, StateBadge, currency, SearchableSelect } from "./components";
 import { useAutoRefresh } from "@/lib/live";
 
 interface ColumnDef {
@@ -198,30 +198,38 @@ export default function QuoteList() {
           </div>
 
           {/* Status & Category Filter */}
-          <select
+          <SearchableSelect
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-[#1d72f2] transition-all cursor-pointer"
-          >
-            <option value="all">All Quotations</option>
-            <option value="pending">Pending Approval</option>
-            <option value="approved">Approved & Ready</option>
-            <option value="negotiation">Under Negotiation</option>
-            <option value="confirmed">Confirmed / Billed</option>
-            <option value="high_value">High Value Deals (≥₹5L)</option>
-            <option value="high_discount">High Discount / Risk Flags</option>
-          </select>
+            onChange={(val) => setFilterType(String(val))}
+            placeholder="Filter quotations..."
+            searchPlaceholder="Search filter options..."
+            className="bg-slate-50 border-slate-200 text-xs text-slate-700 font-semibold"
+            containerClassName="w-48"
+            options={[
+              { value: "all", label: "All Quotations" },
+              { value: "pending", label: "Pending Approval" },
+              { value: "approved", label: "Approved & Ready" },
+              { value: "negotiation", label: "Under Negotiation" },
+              { value: "confirmed", label: "Confirmed / Billed" },
+              { value: "high_value", label: "High Value Deals (≥₹5L)" },
+              { value: "high_discount", label: "High Discount / Risk Flags" },
+            ]}
+          />
 
           {/* Sort Selector */}
-          <select
+          <SearchableSelect
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
-            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 font-semibold focus:outline-none focus:ring-1 focus:ring-[#1d72f2] transition-all cursor-pointer"
-          >
-            <option value="recent">Newest Quotations First</option>
-            <option value="value_desc">Deal Value: High → Low</option>
-            <option value="value_asc">Deal Value: Low → High</option>
-          </select>
+            onChange={(val) => setSortBy(val as any)}
+            placeholder="Sort by..."
+            searchPlaceholder="Search sort options..."
+            className="bg-slate-50 border-slate-200 text-xs text-slate-700 font-semibold"
+            containerClassName="w-52"
+            options={[
+              { value: "recent", label: "Newest Quotations First" },
+              { value: "value_desc", label: "Deal Value: High → Low" },
+              { value: "value_asc", label: "Deal Value: Low → High" },
+            ]}
+          />
         </div>
 
         {/* Pipeline Summary Counter */}

@@ -18,7 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_portal_user, get_session
-from app.models.enums import QuoteState
+from app.models.enums import QuoteState, Role
 from app.models.tables import (
     Customer,
     Invoice,
@@ -89,6 +89,8 @@ class PortalQuoteSummary(BaseModel):
 class PortalMessageOut(BaseModel):
     id: int
     author_name: str
+    author_role: str | None = None
+    is_customer: bool | None = None
     body: str
     quote_line_id: int | None
     counter_discount_pct: str | None
@@ -200,22 +202,26 @@ def get_messages(
         .order_by(PortalMessage.id)
     ).all()
 
-    return [
-        PortalMessageOut(
-            id=m.id,
-            author_name=(
-                session.get(User, m.author_id).full_name
-                if session.get(User, m.author_id) else "unknown"
-            ),
-            body=m.body,
-            quote_line_id=m.quote_line_id,
-            counter_discount_pct=(
-                str(m.counter_discount_pct) if m.counter_discount_pct is not None else None
-            ),
-            created_at=str(m.created_at),
+    results = []
+    for m in messages:
+        author = session.get(User, m.author_id)
+        role_str = author.role.value if author and hasattr(author.role, "value") else (str(author.role) if author else "PORTAL")
+        is_cust = (author.role == Role.PORTAL) if author else False
+        results.append(
+            PortalMessageOut(
+                id=m.id,
+                author_name=author.full_name if author else "unknown",
+                author_role=role_str,
+                is_customer=is_cust,
+                body=m.body,
+                quote_line_id=m.quote_line_id,
+                counter_discount_pct=(
+                    str(m.counter_discount_pct) if m.counter_discount_pct is not None else None
+                ),
+                created_at=str(m.created_at),
+            )
         )
-        for m in messages
-    ]
+    return results
 
 
 # --------------------------------------------------------------------------
@@ -265,9 +271,12 @@ def post_message(
     session.add(msg)
     session.flush()
 
+    role_str = user.role.value if hasattr(user.role, "value") else str(user.role)
     return PortalMessageOut(
         id=msg.id,
         author_name=user.full_name,
+        author_role=role_str,
+        is_customer=user.role == Role.PORTAL,
         body=msg.body,
         quote_line_id=msg.quote_line_id,
         counter_discount_pct=(

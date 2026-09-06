@@ -42,7 +42,7 @@ from app.models.tables import (
 from app.services import billing as billing_service
 from app.services import fulfillment as fulfillment_service
 from app.services.advisor import suggest
-from app.services.quote_lines import apply_line_update, mutate_lines
+from app.services.quote_lines import apply_line_update, apply_order_discount, mutate_lines
 from app.services.scoring import rep_discount_robust_z
 from app.services.snapshots import build_governance_snapshot
 from app.services.state_machine import Event, fire
@@ -473,14 +473,6 @@ def accept_counter(
             detail="no counter-discount proposal found on this quotation",
         )
 
-    line = session.get(QuoteLine, counter_msg.quote_line_id)
-    if line is None or line.quotation_id != quote.id:
-        raise HTTPException(
-            status_code=400,
-            detail=f"counter targets line {counter_msg.quote_line_id} "
-                   f"which is not on this quotation",
-        )
-
     new_discount = counter_msg.counter_discount_pct
 
     def _snapshot_builder(q: Quotation):
@@ -488,11 +480,26 @@ def accept_counter(
             session, q, rep_discount_robust_z(session, q)
         )
 
+    if counter_msg.quote_line_id is not None:
+        line = session.get(QuoteLine, counter_msg.quote_line_id)
+        if line is None or line.quotation_id != quote.id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"counter targets line {counter_msg.quote_line_id} "
+                       f"which is not on this quotation",
+            )
+        mutate_fn = lambda _q: apply_line_update(line, discount_pct=new_discount)
+        target_line_id = line.id
+    else:
+        # General / order-level counter proposal applies to all lines
+        mutate_fn = lambda q: apply_order_discount(session, q, new_discount)
+        target_line_id = None
+
     score, chain = mutate_lines(
         session,
         quote,
         expected_version=quote.version,
-        mutate=lambda _q: apply_line_update(line, discount_pct=new_discount),
+        mutate=mutate_fn,
         build_snapshot=_snapshot_builder,
         actor_id=user.id,
     )
@@ -506,7 +513,82 @@ def accept_counter(
         "score": float(score),
         "approval_chain": chain,
         "applied_discount_pct": str(new_discount),
-        "line_id": line.id,
+        "line_id": target_line_id,
+    }
+
+
+class RepCounterOfferIn(BaseModel):
+    body: str = Field(min_length=1)
+    counter_discount_pct: Decimal | None = None
+    quote_line_id: int | None = None
+
+
+@router.post("/{quote_id}/counter-offer")
+def make_counter_offer(
+    quote_id: int,
+    body: RepCounterOfferIn,
+    session: Session = Depends(get_session),
+    user: User = Depends(current_internal_user),
+) -> dict:
+    """Sales representative delivers a formal counter-offer to the customer portal.
+
+    1. If counter_discount_pct is provided, applies it to the quote line (or all lines)
+       via mutate_lines to uphold governance and self-scoring invariants.
+    2. Records a PortalMessage documenting the sales rep's counter proposal.
+    3. If the quote is in UNDER_NEGOTIATION or READY_TO_FULFILL, fires SEND_TO_PORTAL
+       so the customer portal receives the updated terms.
+    """
+    quote = _load(session, quote_id)
+    check_quote_ownership(user, quote)
+
+    if body.counter_discount_pct is not None:
+        def _snapshot_builder(q: Quotation):
+            return build_governance_snapshot(
+                session, q, rep_discount_robust_z(session, q)
+            )
+
+        if body.quote_line_id is not None:
+            line = session.get(QuoteLine, body.quote_line_id)
+            if line is None or line.quotation_id != quote.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"line {body.quote_line_id} is not on this quotation",
+                )
+            mutate_fn = lambda _q: apply_line_update(line, discount_pct=body.counter_discount_pct)
+        else:
+            mutate_fn = lambda q: apply_order_discount(session, q, body.counter_discount_pct)
+
+        mutate_lines(
+            session,
+            quote,
+            expected_version=quote.version,
+            mutate=mutate_fn,
+            build_snapshot=_snapshot_builder,
+            actor_id=user.id,
+        )
+        session.flush()
+
+    msg = PortalMessage(
+        quotation_id=quote.id,
+        quote_line_id=body.quote_line_id,
+        author_id=user.id,
+        body=body.body,
+        counter_discount_pct=body.counter_discount_pct,
+    )
+    session.add(msg)
+    session.flush()
+
+    if QuoteState(str(quote.state)) in (QuoteState.UNDER_NEGOTIATION, QuoteState.READY_TO_FULFILL):
+        fire(session, quote, Event.SEND_TO_PORTAL, actor_id=user.id)
+        session.flush()
+
+    return {
+        "quotation_id": quote.id,
+        "state": str(quote.state),
+        "version": quote.version,
+        "message_id": msg.id,
+        "body": msg.body,
+        "counter_discount_pct": str(msg.counter_discount_pct) if msg.counter_discount_pct is not None else None,
     }
 
 

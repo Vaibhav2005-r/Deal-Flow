@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, type PlanRow, type WarehouseRow } from "@/lib/api";
 import { useLiveData } from "@/lib/live";
-import { EmptyRow, ErrorBanner, PageHeader, StatCard, currency } from "./components";
+import { EmptyRow, ErrorBanner, PageHeader, StatCard, currency, SearchableSelect } from "./components";
 
 /**
  * §A4 and §A5 — warehouse and subscription-plan configuration.
@@ -150,15 +150,20 @@ export default function Operations() {
           </label>
           <label className="text-sm">
             <span className="block text-slate-600 mb-1 text-xs">Interval</span>
-            <select
-              value={plan.interval} data-testid="plan-interval"
-              onChange={(e) => setPlan({ ...plan, interval: e.target.value })}
-              className="border border-slate-300 rounded px-2 py-1.5 text-sm"
-            >
-              {["monthly", "quarterly", "yearly"].map((i) => (
-                <option key={i} value={i}>{i}</option>
-              ))}
-            </select>
+            <SearchableSelect
+              dataTestId="plan-interval"
+              value={plan.interval}
+              onChange={(val) => setPlan({ ...plan, interval: String(val) })}
+              containerClassName="w-36"
+              className="text-sm"
+              placeholder="Select interval..."
+              searchPlaceholder="Search interval..."
+              options={[
+                { value: "monthly", label: "Monthly" },
+                { value: "quarterly", label: "Quarterly" },
+                { value: "yearly", label: "Yearly" },
+              ]}
+            />
           </label>
           <button
             data-testid="create-plan"
